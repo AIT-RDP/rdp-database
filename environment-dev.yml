@@ -1,0 +1,11 @@
+name: e3-database
+channels:
+  - defaults
+dependencies:
+  - python=3.10
+  - alembic=1.7
+  - sqlalchemy=1.4
+  - pip=21.2
+  - pip:
+      - python-dotenv==0.20
+      - psycopg2-binary==2.9.3  # The conda non-binary installation triggers an import error
