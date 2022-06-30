@@ -11,7 +11,6 @@ import re
 from alembic import op
 import sqlalchemy as sa
 
-
 # revision identifiers, used by Alembic.
 revision = '49bc8370e2fd'
 down_revision = None
@@ -58,6 +57,11 @@ def upgrade():
     """)
 
     op.execute("""
+        SELECT create_hypertable('forecasts', 'obs_time');  -- Partition by observation time
+        CREATE INDEX idx_forecasts_id_obs_time ON forecasts(dp_id, obs_time);  
+    """)
+
+    op.execute("""
         CREATE TABLE measurements (
             dp_id INTEGER NOT NULL,
             obs_time TIMESTAMPTZ NOT NULL,
@@ -71,8 +75,16 @@ def upgrade():
         COMMENT ON COLUMN measurements.value IS 'The recorded value';
     """)
 
+    op.execute("""
+        SELECT create_hypertable('measurements', 'obs_time');  -- Partition by observation time
+        CREATE INDEX idx_measurements_id_obs_time ON measurements(dp_id, obs_time);
+    """)
+
+
 def downgrade():
     """Removes the entire database"""
+    op.execute("DROP INDEX idx_measurements_id_obs_time")
     op.execute("DROP TABLE measurements")
+    op.execute("DROP INDEX idx_forecasts_id_obs_time")
     op.execute("DROP TABLE forecasts")
     op.execute("DROP TABLE data_points")
