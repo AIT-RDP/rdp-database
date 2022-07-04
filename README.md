@@ -8,7 +8,7 @@ creation.
 
 ### Development Setup
 
- * Create an .env file (e.g. from the example file)
+ * Create an .env file (e.g. from the `docker/.env` file)
  * Start the database:
    ```podman run --env-file=.env -v e3-timescale-dev:/var/lib/postgresql/data -p 5432:5432 docker.io/timescale/timescaledb:latest-pg14```
  * Create the conda environment: ```conda env create -f environment-dev.yml```
@@ -16,9 +16,12 @@ creation.
  * Run alembic to populate the database: ```alembic upgrade head```
 
 ### Productive Setup
+ * Build the container: `podman build --file docker/Dockerfile --format docker -t e3-database --label=latest .`
+ * Run the container:  `podman run --env-file=.env localhost/e3-database`
 
 ## Schema Overview
 
 The database hosts the following main tables:
  * **data_points**: A detailed description of all data points
  * **forecasts**: The actual forecasting time series data including observation and forecasting time stamps
+ * **measurements**: The time-series collecting real-time measurements only
