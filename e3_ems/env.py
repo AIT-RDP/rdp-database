@@ -96,8 +96,12 @@ def auto_create_db():
 def _connect_to_db(db_url: str) -> sqlalchemy.engine.Engine:
     """Creates the DB engine and tests it."""
     engine = sqlalchemy.create_engine(db_url)
+
+    logger.debug(f"Test the DB URL {db_url}")
     with engine.connect() as conn:
         conn.execute("SELECT FROM pg_database;")
+    logger.debug(f"Successfully connected to {db_url}")
+
     return engine
 
 
@@ -112,7 +116,7 @@ def run_migrations_online():
         raise KeyError("Expect the E3_POSTGRES_URL environment variable to be available")
 
     auto_create_db()
-    connectable = sqlalchemy.create_engine(os.environ["E3_POSTGRES_URL"])
+    connectable = _connect_to_db(os.environ["E3_POSTGRES_URL"])
 
     with connectable.connect() as connection:
         context.configure(
