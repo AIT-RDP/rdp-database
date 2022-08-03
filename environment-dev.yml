@@ -5,6 +5,7 @@ dependencies:
   - python=3.10
   - alembic=1.7
   - sqlalchemy=1.4
+  - tenacity=8.0.1
   - pip=21.2
   - pip:
       - python-dotenv==0.20

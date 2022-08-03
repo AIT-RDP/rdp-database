@@ -4,13 +4,11 @@ import re
 
 from logging.config import fileConfig
 
-from sqlalchemy import engine_from_config
-from sqlalchemy import pool
-
 from alembic import context
 
-import sqlalchemy
 import dotenv
+import sqlalchemy
+import tenacity
 
 # Populate the local environment variables
 dotenv.load_dotenv(dotenv_path=".env")
@@ -35,6 +33,7 @@ target_metadata = None
 # ... etc.
 
 logger = logging.getLogger(__name__)
+
 
 def run_migrations_offline():
     """Run migrations in 'offline' mode.
@@ -73,7 +72,7 @@ def auto_create_db():
     if not re.match(r"^[a-zA-Z0-9_]+$", db_name):
         raise ValueError(f"The database name '{db_name}' is invalid. Only [a-zA-Z0-9_]+ is allowed")
 
-    engine = sqlalchemy.create_engine(os.environ["E3_POSTGRES_URL_INIT"])
+    engine = _connect_to_db(os.environ["E3_POSTGRES_URL_INIT"])
     with engine.connect() as conn:
         logger.info(f"Ensure that the database '{db_name}' exists")
         # See: https://stackoverflow.com/questions/18389124/simulate-create-database-if-not-exists-for-postgresql
@@ -89,6 +88,17 @@ def auto_create_db():
             END
             $do$;
         """)
+
+
+@tenacity.retry(wait=tenacity.wait_exponential(multiplier=1.2, min=1, max=10),
+                stop=tenacity.stop_after_delay(90),
+                after=tenacity.after_log(logger, logging.WARNING))
+def _connect_to_db(db_url: str) -> sqlalchemy.engine.Engine:
+    """Creates the DB engine and tests it."""
+    engine = sqlalchemy.create_engine(db_url)
+    with engine.connect() as conn:
+        conn.execute("SELECT FROM pg_database;")
+    return engine
 
 
 def run_migrations_online():
