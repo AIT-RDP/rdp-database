@@ -177,6 +177,8 @@ def upgrade_fc_functions():
     op.execute("""
         CREATE FUNCTION forecasts_horizon(
             horizon INTERVAL,
+            series_begin TIMESTAMPTZ,
+            series_end TIMESTAMPTZ,
             name VARCHAR(128),
             location_code VARCHAR(128),
             data_provider VARCHAR(128),
@@ -204,11 +206,13 @@ def upgrade_fc_functions():
                     fc_full.name = forecasts_horizon.name AND
                     fc_full.location_code = forecasts_horizon.location_code AND
                     fc_full.data_provider = forecasts_horizon.data_provider AND
-                    fc_full.device_id IS NOT DISTINCT FROM forecasts_horizon.device_id
+                    fc_full.device_id IS NOT DISTINCT FROM forecasts_horizon.device_id AND
+                    fc_full.obs_time BETWEEN forecasts_horizon.series_begin AND forecasts_horizon.series_end 
         $$ LANGUAGE SQL;
         
-        GRANT EXECUTE ON FUNCTION forecasts_horizon(INTERVAL, VARCHAR(128), VARCHAR(128), VARCHAR(128), VARCHAR(128))
-            TO view_base;
+        GRANT EXECUTE ON FUNCTION forecasts_horizon(
+                INTERVAL, TIMESTAMPTZ, TIMESTAMPTZ, VARCHAR(128), VARCHAR(128), VARCHAR(128), VARCHAR(128)
+            ) TO view_base;
     """)
 
 
@@ -223,7 +227,9 @@ def downgrade_fc_functions():
     op.execute("""
         DROP VIEW IF EXISTS measurements_samples;
         DROP VIEW IF EXISTS forecasts_samples;
-        DROP FUNCTION IF EXISTS forecasts_horizon(INTERVAL, VARCHAR(128), VARCHAR(128), VARCHAR(128), VARCHAR(128));
+        DROP FUNCTION IF EXISTS forecasts_horizon(
+                INTERVAL, TIMESTAMPTZ, TIMESTAMPTZ, VARCHAR(128), VARCHAR(128), VARCHAR(128), VARCHAR(128)
+            );
     """)
 
 
