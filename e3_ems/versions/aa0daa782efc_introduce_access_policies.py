@@ -20,6 +20,7 @@ depends_on = None
 def upgrade():
     upgrade_security_model()
     upgrade_views()
+    upgrade_fc_functions()
 
 
 def upgrade_security_model():
@@ -80,6 +81,7 @@ def upgrade_security_model():
             TO data_source_base;
     """)
 
+    # More information: https://www.cybertec-postgresql.com/en/postgresql-row-level-security-views-and-a-lot-of-magic/
     op.execute(f"""
         ALTER TABLE data_points ADD view_role text NOT NULL DEFAULT 'view_internal';
         COMMENT ON COLUMN data_points.view_role IS 'Role that is allowed to view the associated data';
@@ -144,15 +146,94 @@ def upgrade_views():
     """)
 
 
+def upgrade_fc_functions():
+    """Introduces a forecasting function that filters results and considers the horizon"""
+
+    # Create direct access views to avoid handling the auxiliary information
+    op.execute("""
+        CREATE OR REPLACE VIEW measurements_samples(
+            dp_id, obs_time, value
+        ) AS
+            SELECT dp_id, obs_time, value
+                FROM measurements
+                WHERE dp_id in (SELECT id FROM data_points)
+                ;
+        ALTER VIEW measurements_samples OWNER TO restricting_view_executor;
+        GRANT SELECT, TRIGGER ON TABLE measurements_samples TO view_base;
+    """)
+
+    op.execute("""
+        CREATE OR REPLACE VIEW forecasts_samples(
+            dp_id, obs_time, fc_time, value
+        ) AS
+            SELECT dp_id, obs_time, fc_time, value
+                FROM forecasts
+                WHERE dp_id in (SELECT id FROM data_points)
+                ;
+        ALTER VIEW forecasts_samples OWNER TO restricting_view_executor;
+        GRANT SELECT, TRIGGER ON TABLE forecasts_samples TO view_base;
+    """)
+
+    op.execute("""
+        CREATE FUNCTION forecasts_horizon(
+            horizon INTERVAL,
+            name VARCHAR(128),
+            location_code VARCHAR(128),
+            data_provider VARCHAR(128),
+            device_id VARCHAR(128) DEFAULT NULL
+        ) RETURNS TABLE(
+            dp_id INTEGER, 
+            obs_time TIMESTAMPTZ, 
+            fc_time TIMESTAMPTZ, 
+            value DOUBLE PRECISION, 
+            unit TEXT,
+            view_role TEXT
+        )
+        STABLE
+        SECURITY INVOKER 
+        PARALLEL SAFE 
+        AS $$
+            SELECT fc_full.dp_id, fc_full.obs_time, fc_full.fc_time, fc_full.value, fc_full.unit, fc_full.view_role
+                FROM forecasts_details AS fc_full
+                WHERE fc_full.fc_time = (
+                        SELECT max(fc_time) FROM forecasts_samples AS fc_red
+                            WHERE fc_red.dp_id = fc_full.dp_id AND
+                                fc_red.obs_time = fc_full.obs_time AND
+                                (fc_red.obs_time - fc_red.fc_time) >= forecasts_horizon.horizon
+                    ) AND
+                    fc_full.name = forecasts_horizon.name AND
+                    fc_full.location_code = forecasts_horizon.location_code AND
+                    fc_full.data_provider = forecasts_horizon.data_provider AND
+                    fc_full.device_id IS NOT DISTINCT FROM forecasts_horizon.device_id
+        $$ LANGUAGE SQL;
+        
+        GRANT EXECUTE ON FUNCTION forecasts_horizon(INTERVAL, VARCHAR(128), VARCHAR(128), VARCHAR(128), VARCHAR(128))
+            TO view_base;
+    """)
+
+
 def downgrade():
-    downgrade_security_model()
+    downgrade_fc_functions()
     downgrade_views()
+    downgrade_security_model()
+
+
+def downgrade_fc_functions():
+    """Removes the additional forecasting functions again"""
+    op.execute("""
+        DROP VIEW IF EXISTS measurements_samples;
+        DROP VIEW IF EXISTS forecasts_samples;
+        DROP FUNCTION IF EXISTS forecasts_horizon(INTERVAL, VARCHAR(128), VARCHAR(128), VARCHAR(128), VARCHAR(128));
+    """)
 
 
 def downgrade_views():
     """Upgrade the views to reflect the security column"""
 
-    op.execute("""
+    data_vis_user = os.environ['POSTGRES_DATA_VIS_USER']
+
+    op.execute(f"""
+        DROP VIEW forecasts_latest; -- cannot drop columns from view
         CREATE OR REPLACE VIEW forecasts_latest(
             dp_id, obs_time, fc_time, value, name, device_id, location_code, data_provider, unit
         ) AS
@@ -166,9 +247,11 @@ def downgrade_views():
                                         fc_red.obs_time = fc_full.obs_time
                 );
         ALTER VIEW forecasts_latest OWNER TO current_user;
+        GRANT SELECT, TRIGGER ON TABLE forecasts_latest TO "{data_vis_user}";
     """)
 
-    op.execute("""
+    op.execute(f"""
+        DROP VIEW forecasts_details; -- cannot drop columns from view
         CREATE OR REPLACE VIEW forecasts_details(
             dp_id, obs_time, fc_time, value, name, device_id, location_code, data_provider, unit
         ) AS
@@ -178,9 +261,11 @@ def downgrade_views():
                         ON (fc_full.dp_id = dp.id)
                 ;
         ALTER VIEW forecasts_details OWNER TO current_user;
+        GRANT SELECT, TRIGGER ON TABLE forecasts_details TO "{data_vis_user}";
     """)
 
-    op.execute("""
+    op.execute(f"""
+        DROP VIEW measurements_details; -- cannot drop columns from view
         CREATE OR REPLACE VIEW measurements_details(
             dp_id, obs_time, value, name, device_id, location_code, data_provider, unit
         ) AS
@@ -190,6 +275,7 @@ def downgrade_views():
                         ON (mea.dp_id = dp.id)
                 ;
         ALTER VIEW measurements_details OWNER TO current_user;
+        GRANT SELECT, TRIGGER ON TABLE measurements_details TO "{data_vis_user}";
     """)
 
 
