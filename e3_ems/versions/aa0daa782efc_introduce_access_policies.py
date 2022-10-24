@@ -89,11 +89,24 @@ def upgrade():
             USING (pg_has_role(current_user, view_role, 'MEMBER'));
     """)
 
+    op.execute(f"""
+        -- INHERIT needed to trigger the correct policies
+        ALTER ROLE "{data_source_user}" INHERIT;
+        ALTER ROLE "{data_vis_user}" INHERIT;
+    """)
+
 
 def downgrade():
     """Removes the access policies and reverts the data point table again"""
 
     data_pub_vis_user = os.environ['POSTGRES_DATA_PUB_VIS_USER']
+    data_vis_user = os.environ['POSTGRES_DATA_VIS_USER']
+    data_source_user = os.environ['POSTGRES_DATA_SOURCE_USER']
+
+    op.execute(f"""
+        ALTER ROLE "{data_source_user}" NOINHERIT;
+        ALTER ROLE "{data_vis_user}" NOINHERIT;
+    """)
 
     op.execute("""
         DROP POLICY pl_view_role ON data_points;
