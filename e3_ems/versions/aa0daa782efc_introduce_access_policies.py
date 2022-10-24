@@ -18,6 +18,11 @@ depends_on = None
 
 
 def upgrade():
+    upgrade_security_model()
+    upgrade_views()
+
+
+def upgrade_security_model():
     """Extends the data point table and adds access policies"""
 
     data_vis_user = os.environ['POSTGRES_DATA_VIS_USER']
@@ -47,9 +52,6 @@ def upgrade():
         COMMENT ON ROLE restricting_view_executor IS 'Dedicated owner (executor) of protected views to avoid leaks';
         
         GRANT SELECT ON TABLE measurements, forecasts TO restricting_view_executor; -- Access to raw data needed
-        ALTER VIEW measurements_details OWNER TO restricting_view_executor;
-        ALTER VIEW forecasts_details OWNER TO restricting_view_executor;
-        ALTER VIEW forecasts_latest OWNER TO restricting_view_executor;
     """)
 
     op.execute(f"""        
@@ -96,7 +98,102 @@ def upgrade():
     """)
 
 
+def upgrade_views():
+    """Upgrade the views to reflect the security column"""
+
+    op.execute("""
+        CREATE OR REPLACE VIEW forecasts_latest(
+            dp_id, obs_time, fc_time, value, name, device_id, location_code, data_provider, unit, view_role
+        ) AS
+            SELECT dp.id, obs_time, fc_time, value, dp.name, dp.device_id, dp.location_code, dp.data_provider, dp.unit,
+                    dp.view_role
+                FROM forecasts AS fc_full
+                JOIN data_points AS dp ON (fc_full.dp_id = dp.id)
+                WHERE fc_full.fc_time = (
+                        SELECT max(fc_time)
+                        FROM forecasts AS fc_red
+                        WHERE fc_red.dp_id = fc_full.dp_id AND fc_red.obs_time = fc_full.obs_time
+                    );
+        ALTER VIEW forecasts_latest OWNER TO restricting_view_executor;
+    """)
+
+    op.execute("""
+        CREATE OR REPLACE VIEW forecasts_details(
+            dp_id, obs_time, fc_time, value, name, device_id, location_code, data_provider, unit, view_role
+        ) AS
+            SELECT dp.id, obs_time, fc_time, value, dp.name, dp.device_id, dp.location_code, dp.data_provider, dp.unit, 
+                    dp.view_role
+                FROM forecasts AS fc_full
+                JOIN data_points AS dp
+                        ON (fc_full.dp_id = dp.id)
+                ;
+        ALTER VIEW measurements_details OWNER TO restricting_view_executor;
+    """)
+
+    op.execute("""
+        CREATE OR REPLACE VIEW measurements_details(
+            dp_id, obs_time, value, name, device_id, location_code, data_provider, unit, view_role
+        ) AS
+            SELECT dp.id, obs_time, value, dp.name, dp.device_id, dp.location_code, dp.data_provider, dp.unit, 
+                    dp.view_role
+                FROM measurements AS mea
+                JOIN data_points AS dp
+                        ON (mea.dp_id = dp.id)
+                ;
+        ALTER VIEW forecasts_details OWNER TO restricting_view_executor;
+    """)
+
+
 def downgrade():
+    downgrade_security_model()
+    downgrade_views()
+
+
+def downgrade_views():
+    """Upgrade the views to reflect the security column"""
+
+    op.execute("""
+        CREATE OR REPLACE VIEW forecasts_latest(
+            dp_id, obs_time, fc_time, value, name, device_id, location_code, data_provider, unit
+        ) AS
+            SELECT dp.id, obs_time, fc_time, value, dp.name, dp.device_id, dp.location_code, dp.data_provider, dp.unit
+                FROM forecasts AS fc_full
+                JOIN data_points AS dp
+                        ON (fc_full.dp_id = dp.id)
+                WHERE fc_full.fc_time = (
+                        SELECT max(fc_time) FROM forecasts AS fc_red
+                                WHERE fc_red.dp_id = fc_full.dp_id AND
+                                        fc_red.obs_time = fc_full.obs_time
+                );
+        ALTER VIEW forecasts_latest OWNER TO current_user;
+    """)
+
+    op.execute("""
+        CREATE OR REPLACE VIEW forecasts_details(
+            dp_id, obs_time, fc_time, value, name, device_id, location_code, data_provider, unit
+        ) AS
+            SELECT dp.id, obs_time, fc_time, value, dp.name, dp.device_id, dp.location_code, dp.data_provider, dp.unit
+                FROM forecasts AS fc_full
+                JOIN data_points AS dp
+                        ON (fc_full.dp_id = dp.id)
+                ;
+        ALTER VIEW forecasts_details OWNER TO current_user;
+    """)
+
+    op.execute("""
+        CREATE OR REPLACE VIEW measurements_details(
+            dp_id, obs_time, value, name, device_id, location_code, data_provider, unit
+        ) AS
+            SELECT dp.id, obs_time, value, dp.name, dp.device_id, dp.location_code, dp.data_provider, dp.unit
+                FROM measurements AS mea
+                JOIN data_points AS dp
+                        ON (mea.dp_id = dp.id)
+                ;
+        ALTER VIEW measurements_details OWNER TO current_user;
+    """)
+
+
+def downgrade_security_model():
     """Removes the access policies and reverts the data point table again"""
 
     data_pub_vis_user = os.environ['POSTGRES_DATA_PUB_VIS_USER']
@@ -128,11 +225,7 @@ def downgrade():
     op.execute(f"""
         DROP ROLE view_public;
         DROP ROLE view_internal;
-        
-        ALTER VIEW measurements_details OWNER TO current_user;
-        ALTER VIEW forecasts_details OWNER TO current_user;
-        ALTER VIEW forecasts_latest OWNER TO current_user;
-        
+               
         REVOKE ALL ON TABLE forecasts, measurements FROM restricting_view_executor;
         DROP ROLE restricting_view_executor;
         
