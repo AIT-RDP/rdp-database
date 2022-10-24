@@ -10,7 +10,6 @@ import os
 from alembic import op
 import sqlalchemy as sa
 
-
 # revision identifiers, used by Alembic.
 revision = 'aa0daa782efc'
 down_revision = 'b12e079058dd'
@@ -36,9 +35,21 @@ def upgrade():
         CREATE ROLE view_base NOSUPERUSER NOCREATEDB NOCREATEROLE INHERIT NOLOGIN NOREPLICATION NOBYPASSRLS;
         COMMENT ON ROLE view_base IS 'Base role to define data view permissions';
         
-        GRANT SELECT ON TABLE data_points, forecasts, measurements TO view_base;
+        GRANT SELECT ON TABLE data_points TO view_base;  -- no select on the raw tables to avoid costly checks there
         GRANT SELECT ON SEQUENCE data_points_id_seq TO view_base;
         GRANT SELECT, TRIGGER ON TABLE forecasts_latest, forecasts_details, measurements_details TO view_base;
+    """)
+
+    op.execute("""
+        CREATE ROLE restricting_view_executor 
+            NOSUPERUSER NOCREATEDB NOCREATEROLE INHERIT NOLOGIN NOREPLICATION NOBYPASSRLS
+            IN ROLE view_base;
+        COMMENT ON ROLE restricting_view_executor IS 'Dedicated owner (executor) of protected views to avoid leaks';
+        
+        GRANT SELECT ON TABLE measurements, forecasts TO restricting_view_executor; -- Access to raw data needed
+        ALTER VIEW measurements_details OWNER TO restricting_view_executor;
+        ALTER VIEW forecasts_details OWNER TO restricting_view_executor;
+        ALTER VIEW forecasts_latest OWNER TO restricting_view_executor;
     """)
 
     op.execute(f"""        
@@ -73,9 +84,9 @@ def upgrade():
         
         ALTER TABLE data_points ENABLE ROW LEVEL SECURITY;
         
-        CREATE POLICY pl_insert ON data_points AS PERMISSIVE FOR ALL TO data_source_base USING(true);    
+        CREATE POLICY pl_insert ON data_points AS PERMISSIVE FOR ALL TO data_source_base USING(true);
         CREATE POLICY pl_view_role ON data_points AS PERMISSIVE FOR SELECT TO view_base 
-            USING (pg_has_role(view_role, 'MEMBER')); 
+            USING (pg_has_role(current_user, view_role, 'MEMBER'));
     """)
 
 
@@ -105,7 +116,14 @@ def downgrade():
         DROP ROLE view_public;
         DROP ROLE view_internal;
         
-        REVOKE ALL ON TABLE data_points, forecasts, measurements FROM view_base;
+        ALTER VIEW measurements_details OWNER TO current_user;
+        ALTER VIEW forecasts_details OWNER TO current_user;
+        ALTER VIEW forecasts_latest OWNER TO current_user;
+        
+        REVOKE ALL ON TABLE forecasts, measurements FROM restricting_view_executor;
+        DROP ROLE restricting_view_executor;
+        
+        REVOKE ALL ON TABLE data_points FROM view_base;
         REVOKE ALL ON SEQUENCE data_points_id_seq FROM view_base;
         REVOKE ALL ON TABLE forecasts_latest, forecasts_details, measurements_details FROM view_base;
         DROP ROLE view_base;
