@@ -176,18 +176,23 @@ def upgrade_fc_functions():
 
     op.execute("""
         CREATE FUNCTION forecasts_horizon(
-            horizon INTERVAL,
-            series_begin TIMESTAMPTZ,
-            series_end TIMESTAMPTZ,
-            name VARCHAR(128),
-            location_code VARCHAR(128),
-            data_provider VARCHAR(128),
-            device_id VARCHAR(128) DEFAULT NULL
+            fc_horizon INTERVAL,
+            fc_series_begin TIMESTAMPTZ,
+            fc_series_end TIMESTAMPTZ,
+            fc_name VARCHAR(128),
+            fc_location_code VARCHAR(128),
+            fc_data_provider VARCHAR(128),
+            fc_device_id VARCHAR(128) DEFAULT NULL,
+            regexp BOOL DEFAULT FALSE
         ) RETURNS TABLE(
             dp_id INTEGER, 
             obs_time TIMESTAMPTZ, 
             fc_time TIMESTAMPTZ, 
             value DOUBLE PRECISION, 
+            name VARCHAR(128), 
+            device_id VARCHAR(128), 
+            location_code VARCHAR(128), 
+            data_provider VARCHAR(128), 
             unit TEXT,
             view_role TEXT
         )
@@ -195,23 +200,45 @@ def upgrade_fc_functions():
         SECURITY INVOKER 
         PARALLEL SAFE 
         AS $$
-            SELECT fc_full.dp_id, fc_full.obs_time, fc_full.fc_time, fc_full.value, fc_full.unit, fc_full.view_role
-                FROM forecasts_details AS fc_full
-                WHERE fc_full.fc_time = (
-                        SELECT max(fc_time) FROM forecasts_samples AS fc_red
-                            WHERE fc_red.dp_id = fc_full.dp_id AND
-                                fc_red.obs_time = fc_full.obs_time AND
-                                (fc_red.obs_time - fc_red.fc_time) >= forecasts_horizon.horizon
-                    ) AND
-                    fc_full.name = forecasts_horizon.name AND
-                    fc_full.location_code = forecasts_horizon.location_code AND
-                    fc_full.data_provider = forecasts_horizon.data_provider AND
-                    fc_full.device_id IS NOT DISTINCT FROM forecasts_horizon.device_id AND
-                    fc_full.obs_time BETWEEN forecasts_horizon.series_begin AND forecasts_horizon.series_end 
-        $$ LANGUAGE SQL;
+        DECLARE
+        BEGIN
+            IF regexp THEN
+                RETURN QUERY SELECT fc_full.dp_id, fc_full.obs_time, fc_full.fc_time, fc_full.value, fc_full.name,  
+                        fc_full.device_id, fc_full.location_code, fc_full.data_provider, fc_full.unit, fc_full.view_role
+                    FROM forecasts_details AS fc_full
+                    WHERE fc_full.fc_time = (
+                            SELECT max(fc_red.fc_time) FROM forecasts_samples AS fc_red
+                                WHERE fc_red.dp_id = fc_full.dp_id AND
+                                    fc_red.obs_time = fc_full.obs_time AND
+                                    (fc_red.obs_time - fc_red.fc_time) >= forecasts_horizon.fc_horizon
+                        ) AND
+                        fc_full.name ~ forecasts_horizon.fc_name AND
+                        fc_full.location_code ~ forecasts_horizon.fc_location_code AND
+                        fc_full.data_provider ~ forecasts_horizon.fc_data_provider AND
+                        ((fc_full.device_id IS NULL AND forecasts_horizon.fc_device_id IS NULL) OR 
+                            (fc_full.device_id ~ forecasts_horizon.fc_device_id)) AND
+                        fc_full.obs_time BETWEEN forecasts_horizon.fc_series_begin AND forecasts_horizon.fc_series_end; 
+            ELSE
+                RETURN QUERY SELECT fc_full.dp_id, fc_full.obs_time, fc_full.fc_time, fc_full.value, fc_full.name,  
+                        fc_full.device_id, fc_full.location_code, fc_full.data_provider, fc_full.unit, fc_full.view_role
+                    FROM forecasts_details AS fc_full
+                    WHERE fc_full.fc_time = (
+                            SELECT max(fc_red.fc_time) FROM forecasts_samples AS fc_red
+                                WHERE fc_red.dp_id = fc_full.dp_id AND
+                                    fc_red.obs_time = fc_full.obs_time AND
+                                    (fc_red.obs_time - fc_red.fc_time) >= forecasts_horizon.fc_horizon
+                        ) AND
+                        fc_full.name = forecasts_horizon.fc_name AND
+                        fc_full.location_code = forecasts_horizon.fc_location_code AND
+                        fc_full.data_provider = forecasts_horizon.fc_data_provider AND
+                        fc_full.device_id IS NOT DISTINCT FROM forecasts_horizon.fc_device_id AND
+                        fc_full.obs_time BETWEEN forecasts_horizon.fc_series_begin AND forecasts_horizon.fc_series_end;
+            END IF;
+        END;          
+        $$ LANGUAGE plpgsql;
         
         GRANT EXECUTE ON FUNCTION forecasts_horizon(
-                INTERVAL, TIMESTAMPTZ, TIMESTAMPTZ, VARCHAR(128), VARCHAR(128), VARCHAR(128), VARCHAR(128)
+                INTERVAL, TIMESTAMPTZ, TIMESTAMPTZ, VARCHAR(128), VARCHAR(128), VARCHAR(128), VARCHAR(128), BOOL
             ) TO view_base;
     """)
 
@@ -228,7 +255,7 @@ def downgrade_fc_functions():
         DROP VIEW IF EXISTS measurements_samples;
         DROP VIEW IF EXISTS forecasts_samples;
         DROP FUNCTION IF EXISTS forecasts_horizon(
-                INTERVAL, TIMESTAMPTZ, TIMESTAMPTZ, VARCHAR(128), VARCHAR(128), VARCHAR(128), VARCHAR(128)
+                INTERVAL, TIMESTAMPTZ, TIMESTAMPTZ, VARCHAR(128), VARCHAR(128), VARCHAR(128), VARCHAR(128), BOOL
             );
     """)
 
