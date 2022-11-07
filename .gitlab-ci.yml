@@ -63,6 +63,7 @@ release-image-main:
   only:
     - main
     - master
+    - external-registry
 
 # release the latest-dev tag
 release-image-tag:
@@ -91,6 +92,7 @@ release-image-dev:
     - shell
   only:
     - development
+    - external-registry
 
 # Removes any local docker image to avoid littering the build host
 cleanup-images:
