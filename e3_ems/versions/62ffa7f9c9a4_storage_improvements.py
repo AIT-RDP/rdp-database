@@ -30,6 +30,7 @@ def upgrade():
             timescaledb.compress_segmentby='dp_id'
         );
         SELECT add_compression_policy('measurements', INTERVAL '2 days');
+        SELECT set_chunk_time_interval('measurements', INTERVAL '5 days');
     """)
 
     op.execute("""
@@ -39,12 +40,15 @@ def upgrade():
             timescaledb.compress_orderby='obs_time DESC, fc_time DESC'
         );
         SELECT add_compression_policy('forecasts', INTERVAL '2 days');
+        SELECT set_chunk_time_interval('forecasts', INTERVAL '24 hours');
     """)
+
 
 def downgrade():
     """Introduces the redundancies again"""
 
     op.execute("""
+        SELECT set_chunk_time_interval('forecasts', INTERVAL '7 days');
         SELECT remove_compression_policy('forecasts', true);
         -- Decompressed all compressed chunks. If that command fails with a deadlock, consider to stop the feeder 
         -- processes like RedSQL
@@ -55,6 +59,7 @@ def downgrade():
     """)
 
     op.execute("""
+        SELECT set_chunk_time_interval('measurements', INTERVAL '7 days');
         SELECT remove_compression_policy('measurements', true);
         -- Decompressed all compressed chunks. If that command fails with a deadlock, consider to stop the feeder 
         -- processes like RedSQL
