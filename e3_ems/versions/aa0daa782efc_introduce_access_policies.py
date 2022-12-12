@@ -175,7 +175,7 @@ def upgrade_fc_functions():
     """)
 
     op.execute("""
-        CREATE FUNCTION forecasts_horizon(
+        CREATE OR REPLACE FUNCTION forecasts_horizon(
             fc_horizon INTERVAL,
             fc_series_begin TIMESTAMPTZ,
             fc_series_end TIMESTAMPTZ,

@@ -8,6 +8,8 @@ Create Date: 2022-12-07 10:35:36.588583
 from alembic import op
 import sqlalchemy as sa
 
+import e3_ems.versions.aa0daa782efc_introduce_access_policies as access_policy_def
+
 # revision identifiers, used by Alembic.
 revision = '62ffa7f9c9a4'
 down_revision = 'aa0daa782efc'
@@ -17,6 +19,13 @@ depends_on = None
 
 def upgrade():
     """Removes redundant indices and enforces some improvements"""
+    upgrade_hypertable_organization()
+    upgrade_forecasts_horizon()
+
+
+def upgrade_hypertable_organization():
+    """Upgrades the hypertable storage and compression parameters"""
+
     op.execute("""
         DROP INDEX forecasts_obs_time_idx;
         DROP INDEX measurements_obs_time_idx;
@@ -44,9 +53,83 @@ def upgrade():
     """)
 
 
+def upgrade_forecasts_horizon():
+    """Alters the forecasts' horizon function to speed up the execution"""
+
+    op.execute("""
+        CREATE OR REPLACE FUNCTION forecasts_horizon(
+            fc_horizon INTERVAL,
+            fc_series_begin TIMESTAMPTZ,
+            fc_series_end TIMESTAMPTZ,
+            fc_name VARCHAR(128),
+            fc_location_code VARCHAR(128),
+            fc_data_provider VARCHAR(128),
+            fc_device_id VARCHAR(128) DEFAULT NULL,
+            regexp BOOL DEFAULT FALSE
+        ) RETURNS TABLE(
+            dp_id INTEGER, 
+            obs_time TIMESTAMPTZ, 
+            fc_time TIMESTAMPTZ, 
+            value DOUBLE PRECISION, 
+            name VARCHAR(128), 
+            device_id VARCHAR(128), 
+            location_code VARCHAR(128), 
+            data_provider VARCHAR(128), 
+            unit TEXT,
+            view_role TEXT
+        )
+        STABLE
+        SECURITY INVOKER 
+        PARALLEL SAFE 
+        AS $$
+        DECLARE
+        BEGIN
+            IF regexp THEN
+                RETURN QUERY SELECT fc_full.dp_id, fc_full.obs_time, last(fc_full.fc_time, fc_full.fc_time) AS fc_time, 
+                        last(fc_full.value, fc_full.fc_time) AS value, fc_full.name, fc_full.device_id, 
+                        fc_full.location_code, fc_full.data_provider, fc_full.unit, fc_full.view_role
+                    FROM forecasts_details AS fc_full
+                    WHERE (fc_full.obs_time - fc_full.fc_time) >= forecasts_horizon.fc_horizon AND
+                        fc_full.name ~ forecasts_horizon.fc_name AND
+                        fc_full.location_code ~ forecasts_horizon.fc_location_code AND
+                        fc_full.data_provider ~ forecasts_horizon.fc_data_provider AND
+                        ((fc_full.device_id IS NULL AND forecasts_horizon.fc_device_id IS NULL) OR 
+                            (fc_full.device_id ~ forecasts_horizon.fc_device_id)) AND
+                        fc_full.obs_time BETWEEN forecasts_horizon.fc_series_begin AND forecasts_horizon.fc_series_end
+                    GROUP BY fc_full.dp_id, fc_full.obs_time, fc_full.name, fc_full.device_id, fc_full.location_code, 
+                        fc_full.data_provider, fc_full.unit, fc_full.view_role;                
+            ELSE
+                RETURN QUERY SELECT fc_full.dp_id, fc_full.obs_time, last(fc_full.fc_time, fc_full.fc_time) AS fc_time, 
+                        last(fc_full.value, fc_full.fc_time) AS value, fc_full.name, fc_full.device_id, 
+                        fc_full.location_code, fc_full.data_provider, fc_full.unit, fc_full.view_role
+                    FROM forecasts_details AS fc_full
+                    WHERE (fc_full.obs_time - fc_full.fc_time) >= forecasts_horizon.fc_horizon AND
+                        fc_full.name = forecasts_horizon.fc_name AND
+                        fc_full.location_code = forecasts_horizon.fc_location_code AND
+                        fc_full.data_provider = forecasts_horizon.fc_data_provider AND
+                        fc_full.device_id IS NOT DISTINCT FROM forecasts_horizon.fc_device_id AND
+                        fc_full.obs_time BETWEEN forecasts_horizon.fc_series_begin AND forecasts_horizon.fc_series_end
+                    GROUP BY fc_full.dp_id, fc_full.obs_time, fc_full.name, fc_full.device_id, fc_full.location_code, 
+                        fc_full.data_provider, fc_full.unit, fc_full.view_role;
+            END IF;
+        END;          
+        $$ LANGUAGE plpgsql;
+
+        GRANT EXECUTE ON FUNCTION forecasts_horizon(
+                INTERVAL, TIMESTAMPTZ, TIMESTAMPTZ, VARCHAR(128), VARCHAR(128), VARCHAR(128), VARCHAR(128), BOOL
+            ) TO view_base;
+    """)
+
+
 def downgrade():
     """Introduces the redundancies again"""
 
+    access_policy_def.upgrade_fc_functions()
+    downgrade_hypertable_organization()
+
+
+def downgrade_hypertable_organization():
+    """Downgrades the hypertable fc organization and decompresses the data"""
     op.execute("""
         SELECT set_chunk_time_interval('forecasts', INTERVAL '7 days');
         SELECT remove_compression_policy('forecasts', true);
