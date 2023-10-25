@@ -8,7 +8,6 @@ Create Date: 2023-10-24 13:20:09.817526
 from alembic import op
 import sqlalchemy as sa
 
-
 # revision identifiers, used by Alembic.
 revision = '3a7a5c75ae76'
 down_revision = '62ffa7f9c9a4'
@@ -20,10 +19,10 @@ def upgrade():
     _upgrade_tables()
     _upgrade_views()
 
+
 def downgrade():
     _downgrade_views()
     _downgrade_tables()
-
 
 
 def _upgrade_tables():
@@ -34,6 +33,7 @@ def _upgrade_tables():
 
         COMMENT ON COLUMN data_points.metadata IS 'Additional data points metadata';
     """)
+
 
 def _upgrade_views():
     """Upgrade views adding metadata column"""
@@ -80,6 +80,7 @@ def _upgrade_views():
                     );
     """)
 
+
 def _downgrade_tables():
     """Alter data_points table removing metadata"""
 
@@ -87,6 +88,7 @@ def _downgrade_tables():
         ALTER TABLE data_points
         DROP COLUMN metadata;
     """)
+
 
 def _downgrade_views():
     """Downgrade views removing metadata column"""
@@ -119,8 +121,7 @@ def _downgrade_views():
                 ;
     """)
 
-
-    # Fix forecasts_latest view removing metadata column 
+    # Fix forecasts_latest view removing metadata column
     op.execute("""
         DROP VIEW forecasts_latest; -- cannot drop columns from view
         CREATE OR REPLACE VIEW forecasts_latest(
@@ -135,4 +136,14 @@ def _downgrade_views():
                         FROM forecasts AS fc_red
                         WHERE fc_red.dp_id = fc_full.dp_id AND fc_red.obs_time = fc_full.obs_time
                     );
+    """)
+
+    # Make sure to restore the permission that got lost by dropping the views. However, not dropping the views results
+    # in errors that one cannot drop columns from the view. Hence, restoring the permissions in the only option I see.
+    op.execute("""
+        ALTER VIEW forecasts_latest OWNER TO restricting_view_executor;
+        ALTER VIEW measurements_details OWNER TO restricting_view_executor;
+        ALTER VIEW forecasts_details OWNER TO restricting_view_executor;
+
+        GRANT SELECT, TRIGGER ON TABLE forecasts_latest, forecasts_details, measurements_details TO view_base;
     """)
