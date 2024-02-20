@@ -1,4 +1,4 @@
-# E³ Database
+# Main RDP Database Scheme
 
 Hosts the scheme as well as the migration scripts that set up the long-term storage based on Timescale DB. 
 The project heavily relies on [Alembic](https://alembic.sqlalchemy.org/en/latest/index.html) to manage DB migration and 

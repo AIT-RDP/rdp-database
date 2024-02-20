@@ -9,7 +9,7 @@ import os
 
 from alembic import op
 import sqlalchemy as sa
-import e3_ems.versions.d2baa52b21c2_automatic_data_point_resolution as dp_resolution
+import rdp_db.versions.d2baa52b21c2_automatic_data_point_resolution as dp_resolution
 
 # revision identifiers, used by Alembic.
 revision = 'b158d45bc708'
