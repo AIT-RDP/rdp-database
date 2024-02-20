@@ -21,7 +21,7 @@ depends_on = None
 def upgrade():
     data_source_user = os.environ['POSTGRES_DATA_SOURCE_USER']
 
-    op.execute(f"""
+    op.execute(sa.text(f"""
         DROP FUNCTION get_or_create_data_point_id(varchar, varchar, varchar, varchar); -- Avoid duplication
         
         CREATE OR REPLACE FUNCTION get_or_create_data_point_id(
@@ -65,20 +65,20 @@ def upgrade():
             'Returns the datapoint id having the specified name, device_id, location_code, and data_provider. In 
              case non exist a data point will be created. The initial_unit and initial_metadata will only be used
              when creating the data point. No update will be performed.';
-    """)
+    """))
 
 
 def downgrade():
     data_source_user = os.environ['POSTGRES_DATA_SOURCE_USER']
 
-    op.execute("""
+    op.execute(sa.text("""
         DROP FUNCTION get_or_create_data_point_id(varchar, varchar, varchar, varchar, text, jsonb);
-    """)
+    """))
 
     dp_resolution.upgrade()
-    op.execute(f"""
+    op.execute(sa.text(f"""
         GRANT EXECUTE ON FUNCTION public.get_or_create_data_point_id(varchar, varchar, varchar, varchar) 
             TO data_source_base;
         GRANT EXECUTE ON FUNCTION public.get_or_create_data_point_id(varchar, varchar, varchar, varchar) 
             TO {data_source_user};
-    """)
+    """))

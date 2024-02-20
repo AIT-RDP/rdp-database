@@ -76,7 +76,7 @@ def auto_create_db():
     with engine.connect() as conn:
         logger.info(f"Ensure that the database '{db_name}' exists")
         # See: https://stackoverflow.com/questions/18389124/simulate-create-database-if-not-exists-for-postgresql
-        conn.execute(f"""
+        conn.execute(sqlalchemy.text(f"""
             DO
             $do$
             BEGIN
@@ -88,7 +88,7 @@ def auto_create_db():
                 END IF;
             END
             $do$;
-        """)
+        """))
 
 
 @tenacity.retry(wait=tenacity.wait_exponential(multiplier=1.2, min=1, max=10),
@@ -100,7 +100,7 @@ def _connect_to_db(db_url: str) -> sqlalchemy.engine.Engine:
 
     logger.debug(f"Test the DB URL {db_url}")
     with engine.connect() as conn:
-        conn.execute("SELECT FROM pg_database;")
+        conn.execute(sqlalchemy.text("SELECT FROM pg_database;"))
     logger.debug(f"Successfully connected to {db_url}")
 
     return engine

@@ -18,7 +18,7 @@ depends_on = None
 def upgrade():
     """Creates a function that returns the latest known prediction for a given forecast horizon"""
 
-    op.execute("""
+    op.execute(sa.text("""
         CREATE OR REPLACE FUNCTION forecasts_horizon(
             horizon INTERVAL
         ) RETURNS TABLE(
@@ -43,9 +43,9 @@ def upgrade():
                                         (fc_red.obs_time - fc_red.fc_time) >= forecasts_horizon.horizon
                 )
         $$ LANGUAGE SQL;
-    """)
+    """))
 
 
 def downgrade():
     """Reverts the changes"""
-    op.execute("DROP FUNCTION forecasts_horizon;")
+    op.execute(sa.text("DROP FUNCTION forecasts_horizon;"))

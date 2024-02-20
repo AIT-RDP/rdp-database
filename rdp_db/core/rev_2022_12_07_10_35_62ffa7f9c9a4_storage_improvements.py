@@ -26,23 +26,23 @@ def upgrade():
 def upgrade_hypertable_organization():
     """Upgrades the hypertable storage and compression parameters"""
 
-    op.execute("""
+    op.execute(sa.text("""
         DROP INDEX forecasts_obs_time_idx;
         DROP INDEX measurements_obs_time_idx;
         DROP INDEX idx_forecasts_id_obs_time;
         DROP INDEX idx_measurements_id_obs_time;
-    """)
+    """))
 
-    op.execute("""
+    op.execute(sa.text("""
         ALTER TABLE measurements SET (
             timescaledb.compress=true,
             timescaledb.compress_segmentby='dp_id'
         );
         SELECT add_compression_policy('measurements', INTERVAL '2 days');
         SELECT set_chunk_time_interval('measurements', INTERVAL '5 days');
-    """)
+    """))
 
-    op.execute("""
+    op.execute(sa.text("""
         ALTER TABLE forecasts SET (
             timescaledb.compress=true,
             timescaledb.compress_segmentby='dp_id',
@@ -50,13 +50,13 @@ def upgrade_hypertable_organization():
         );
         SELECT add_compression_policy('forecasts', INTERVAL '2 days');
         SELECT set_chunk_time_interval('forecasts', INTERVAL '24 hours');
-    """)
+    """))
 
 
 def upgrade_forecasts_horizon():
     """Alters the forecasts' horizon function to speed up the execution"""
 
-    op.execute("""
+    op.execute(sa.text("""
         CREATE OR REPLACE FUNCTION forecasts_horizon(
             fc_horizon INTERVAL,
             fc_series_begin TIMESTAMPTZ,
@@ -118,7 +118,7 @@ def upgrade_forecasts_horizon():
         GRANT EXECUTE ON FUNCTION forecasts_horizon(
                 INTERVAL, TIMESTAMPTZ, TIMESTAMPTZ, VARCHAR(128), VARCHAR(128), VARCHAR(128), VARCHAR(128), BOOL
             ) TO view_base;
-    """)
+    """))
 
 
 def downgrade():
@@ -130,7 +130,7 @@ def downgrade():
 
 def downgrade_hypertable_organization():
     """Downgrades the hypertable fc organization and decompresses the data"""
-    op.execute("""
+    op.execute(sa.text("""
         SELECT set_chunk_time_interval('forecasts', INTERVAL '7 days');
         SELECT remove_compression_policy('forecasts', true);
         -- Decompressed all compressed chunks. If that command fails with a deadlock, consider to stop the feeder 
@@ -139,9 +139,9 @@ def downgrade_hypertable_organization():
             FROM chunk_compression_stats('forecasts')
             WHERE compression_status = 'Compressed';
         ALTER TABLE forecasts SET (timescaledb.compress=false);
-    """)
+    """))
 
-    op.execute("""
+    op.execute(sa.text("""
         SELECT set_chunk_time_interval('measurements', INTERVAL '7 days');
         SELECT remove_compression_policy('measurements', true);
         -- Decompressed all compressed chunks. If that command fails with a deadlock, consider to stop the feeder 
@@ -150,11 +150,11 @@ def downgrade_hypertable_organization():
             FROM chunk_compression_stats('measurements')
             WHERE compression_status = 'Compressed';
         ALTER TABLE measurements SET (timescaledb.compress=false);
-    """)
+    """))
 
-    op.execute("""
+    op.execute(sa.text("""
         CREATE INDEX idx_measurements_id_obs_time ON measurements(dp_id, obs_time);
         CREATE INDEX idx_forecasts_id_obs_time ON forecasts(dp_id, obs_time);
         CREATE INDEX measurements_obs_time_idx ON public.measurements USING btree (obs_time DESC);
         CREATE INDEX forecasts_obs_time_idx ON public.forecasts USING btree (obs_time DESC);
-    """)
+    """))

@@ -27,19 +27,19 @@ def downgrade():
 
 def _upgrade_tables():
     """Alter data_points table adding metadata"""
-    op.execute("""
+    op.execute(sa.text("""
         ALTER TABLE data_points 
         ADD COLUMN metadata jsonb not null default '{}'::jsonb;
 
         COMMENT ON COLUMN data_points.metadata IS 'Additional data points metadata';
-    """)
+    """))
 
 
 def _upgrade_views():
     """Upgrade views adding metadata column"""
 
     # Fix measurements_details view adding metadata column 
-    op.execute("""
+    op.execute(sa.text("""
         CREATE OR REPLACE VIEW measurements_details(
             dp_id, obs_time, value, name, device_id, location_code, data_provider, unit, view_role, metadata
         ) AS
@@ -49,10 +49,10 @@ def _upgrade_views():
                 JOIN data_points AS dp
                         ON (mea.dp_id = dp.id)
                 ;
-    """)
+    """))
 
     # Fix forecasts_details view adding metadata column 
-    op.execute("""
+    op.execute(sa.text("""
         CREATE OR REPLACE VIEW forecasts_details(
             dp_id, obs_time, fc_time, value, name, device_id, location_code, data_provider, unit, view_role, metadata
         ) AS
@@ -62,10 +62,10 @@ def _upgrade_views():
                 JOIN data_points AS dp
                         ON (fc_full.dp_id = dp.id)
                 ;
-    """)
+    """))
 
     # Fix forecasts_latest view adding metadata column 
-    op.execute("""
+    op.execute(sa.text("""
         CREATE OR REPLACE VIEW forecasts_latest(
             dp_id, obs_time, fc_time, value, name, device_id, location_code, data_provider, unit, view_role, metadata
         ) AS
@@ -78,23 +78,23 @@ def _upgrade_views():
                         FROM forecasts AS fc_red
                         WHERE fc_red.dp_id = fc_full.dp_id AND fc_red.obs_time = fc_full.obs_time
                     );
-    """)
+    """))
 
 
 def _downgrade_tables():
     """Alter data_points table removing metadata"""
 
-    op.execute("""
+    op.execute(sa.text("""
         ALTER TABLE data_points
         DROP COLUMN metadata;
-    """)
+    """))
 
 
 def _downgrade_views():
     """Downgrade views removing metadata column"""
 
     # Fix measurements_details view removing metadata column 
-    op.execute("""
+    op.execute(sa.text("""
         DROP VIEW measurements_details; -- cannot drop columns from view
         CREATE OR REPLACE VIEW measurements_details(
             dp_id, obs_time, value, name, device_id, location_code, data_provider, unit, view_role
@@ -105,10 +105,10 @@ def _downgrade_views():
                 JOIN data_points AS dp
                         ON (mea.dp_id = dp.id)
                 ;
-    """)
+    """))
 
     # Fix forecasts_details view removing metadata column 
-    op.execute("""
+    op.execute(sa.text("""
         DROP VIEW forecasts_details; -- cannot drop columns from view
         CREATE OR REPLACE VIEW forecasts_details(
             dp_id, obs_time, fc_time, value, name, device_id, location_code, data_provider, unit, view_role
@@ -119,10 +119,10 @@ def _downgrade_views():
                 JOIN data_points AS dp
                         ON (fc_full.dp_id = dp.id)
                 ;
-    """)
+    """))
 
     # Fix forecasts_latest view removing metadata column
-    op.execute("""
+    op.execute(sa.text("""
         DROP VIEW forecasts_latest; -- cannot drop columns from view
         CREATE OR REPLACE VIEW forecasts_latest(
             dp_id, obs_time, fc_time, value, name, device_id, location_code, data_provider, unit, view_role
@@ -136,14 +136,14 @@ def _downgrade_views():
                         FROM forecasts AS fc_red
                         WHERE fc_red.dp_id = fc_full.dp_id AND fc_red.obs_time = fc_full.obs_time
                     );
-    """)
+    """))
 
     # Make sure to restore the permission that got lost by dropping the views. However, not dropping the views results
     # in errors that one cannot drop columns from the view. Hence, restoring the permissions in the only option I see.
-    op.execute("""
+    op.execute(sa.text("""
         ALTER VIEW forecasts_latest OWNER TO restricting_view_executor;
         ALTER VIEW measurements_details OWNER TO restricting_view_executor;
         ALTER VIEW forecasts_details OWNER TO restricting_view_executor;
 
         GRANT SELECT, TRIGGER ON TABLE forecasts_latest, forecasts_details, measurements_details TO view_base;
-    """)
+    """))
