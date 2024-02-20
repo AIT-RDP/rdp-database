@@ -48,4 +48,4 @@ def upgrade():
 
 def downgrade():
     """Reverts the changes"""
-    op.execute("DROP FUNCTION get_or_create_data_point_id;")
+    op.execute("DROP FUNCTION forecasts_horizon;")

@@ -47,10 +47,10 @@ def run_migrations_offline():
     script output.
 
     """
-    if "E3_POSTGRES_URL" not in os.environ:
-        raise KeyError("Expect the E3_POSTGRES_URL environment variable to be available")
+    if "RDP_POSTGRES_URL" not in os.environ:
+        raise KeyError("Expect the RDP_POSTGRES_URL environment variable to be available")
 
-    url = config.get_main_option(os.environ["E3_POSTGRES_URL"])
+    url = config.get_main_option(os.environ["RDP_POSTGRES_URL"])
     context.configure(
         url=url,
         target_metadata=target_metadata,
@@ -65,14 +65,14 @@ def run_migrations_offline():
 def auto_create_db():
     """Uses the environment variables to automatically create the database"""
 
-    if "E3_POSTGRES_URL_INIT" not in os.environ:
-        raise KeyError("Expect the E3_POSTGRES_URL_INIT environment variable to be available")
+    if "RDP_POSTGRES_URL_INIT" not in os.environ:
+        raise KeyError("Expect the RDP_POSTGRES_URL_INIT environment variable to be available")
 
-    db_name = os.environ.get('POSTGRES_DB', 'e3_ems')
+    db_name = os.environ.get('POSTGRES_DB', 'rdp_db')
     if not re.match(r"^[a-zA-Z0-9_]+$", db_name):
         raise ValueError(f"The database name '{db_name}' is invalid. Only [a-zA-Z0-9_]+ is allowed")
 
-    engine = _connect_to_db(os.environ["E3_POSTGRES_URL_INIT"])
+    engine = _connect_to_db(os.environ["RDP_POSTGRES_URL_INIT"])
     with engine.connect() as conn:
         logger.info(f"Ensure that the database '{db_name}' exists")
         # See: https://stackoverflow.com/questions/18389124/simulate-create-database-if-not-exists-for-postgresql
@@ -113,11 +113,11 @@ def run_migrations_online():
     and associate a connection with the context.
 
     """
-    if "E3_POSTGRES_URL" not in os.environ:
-        raise KeyError("Expect the E3_POSTGRES_URL environment variable to be available")
+    if "RDP_POSTGRES_URL" not in os.environ:
+        raise KeyError("Expect the RDP_POSTGRES_URL environment variable to be available")
 
     auto_create_db()
-    connectable = _connect_to_db(os.environ["E3_POSTGRES_URL"])
+    connectable = _connect_to_db(os.environ["RDP_POSTGRES_URL"])
 
     with connectable.connect() as connection:
         context.configure(
