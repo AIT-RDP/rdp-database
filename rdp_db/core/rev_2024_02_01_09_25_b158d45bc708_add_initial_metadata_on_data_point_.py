@@ -14,7 +14,7 @@ import rdp_db.core.rev_2022_08_04_14_46_d2baa52b21c2_automatic_data_point_resolu
 # revision identifiers, used by Alembic.
 revision = 'b158d45bc708'
 down_revision = '3a7a5c75ae76'
-branch_labels = None
+branch_labels = "rdp_db_core"
 depends_on = None
 
 
