@@ -8,7 +8,7 @@ Create Date: 2022-12-07 10:35:36.588583
 from alembic import op
 import sqlalchemy as sa
 
-import e3_ems.versions.aa0daa782efc_introduce_access_policies as access_policy_def
+import rdp_db.core.rev_2022_10_20_09_54_aa0daa782efc_introduce_access_policies as access_policy_def
 
 # revision identifiers, used by Alembic.
 revision = '62ffa7f9c9a4'
