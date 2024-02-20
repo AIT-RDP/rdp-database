@@ -1,5 +1,0 @@
-sqlalchemy==1.4
-alembic==1.7
-python-dotenv==0.20
-psycopg2-binary==2.9.3
-tenacity==8.0.1
