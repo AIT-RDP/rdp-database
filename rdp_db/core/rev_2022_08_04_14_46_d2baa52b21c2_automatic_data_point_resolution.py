@@ -17,7 +17,7 @@ depends_on = None
 
 
 def upgrade():
-    op.execute("""
+    op.execute(sa.text("""
         CREATE OR REPLACE FUNCTION get_or_create_data_point_id(
                 name VARCHAR(128),
                 device_id VARCHAR(128),
@@ -44,8 +44,8 @@ def upgrade():
                 RETURN dp_id;
         END;
         $$ LANGUAGE plpgsql;
-    """)
+    """))
 
 
 def downgrade():
-    op.execute("DROP FUNCTION get_or_create_data_point_id;")
+    op.execute(sa.text("DROP FUNCTION get_or_create_data_point_id;"))

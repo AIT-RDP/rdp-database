@@ -16,8 +16,31 @@ creation.
  * Run alembic to populate the database: ```alembic upgrade head```
 
 ### Productive Setup
- * Build the container: `podman build --file docker/Dockerfile --format docker -t e3-database --label=latest .`
- * Run the container:  `podman run --env-file=.env localhost/e3-database`
+ * Build the container: `podman build --file docker/Dockerfile --format docker -t rdp-database --label=latest .`
+ * Run the container:  `podman run --env-file=.env localhost/rdp-database`
+
+### Extended Setup
+Sometimes it is needed to extend the RDP database scheme and add own schema elements. This can be done by creating a
+derived project and installing the alembic files as a reference. The following quickstart guide assumes that the basic 
+poetry project has already been created.
+
+ * Add the RDP database project as a dependency.
+   * Add the package source in the project.toml:
+     `poetry source add gitlab-rdp-database https://gitlab-intern.ait.ac.at/api/v4/projects/3005/packages/pypi/simple`
+   * Configure the access token (must be done on every fresh installation before calling `poetry install`): 
+     `poetry config http-basic.gitlab-rdp-database __token__ <your-deployment-token>`
+   * Install the dependency: `poetry add --source gitlab-rdp-database rdp-database`
+ * Setup the derived alembic environment. The newly created environment will reference the branches of rdp_db.
+   * Initialize the derived alembic installation: `poetry run alembic init --package my_app`
+   * Adopt the `alembic.ini` file to your needs (file template, revision file locations, etc.)
+   * In the `alembic.ini` file, set the `version_path_separator` to `version_path_separator = ;`. Do not use the `:` 
+     character as a version separator. This will be needed to tell alembic that the resource is actually a package.
+   * Add the requested version files to `version_locations`. The package names are separated by `:` characters. E.g. 
+     `version_locations = my_app/versions;rdp_db:core`
+   * Customize the local `env.py` file. Most likely, the logic from `rdp_dp` including the retry logic and various 
+     timescale workarounds should be reused. Just replace the entire file content with import 
+     `import rdp_db.env` to use the functionality.
+   * Do not forget to set the environment variables or to create a proper `.env` file.
 
 ## Schema Overview
 

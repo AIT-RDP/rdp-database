@@ -20,7 +20,7 @@ depends_on = None
 
 def upgrade():
     """Creates the database stub and activates Timescale DB"""
-    op.execute("""
+    op.execute(sa.text("""
         CREATE TABLE data_points (
             id SERIAL NOT NULL,
             name VARCHAR(128) NOT NULL,
@@ -38,9 +38,9 @@ def upgrade():
         COMMENT ON COLUMN data_points.location_code IS 'The location name of the associated observations';
         COMMENT ON COLUMN data_points.data_provider IS 'Service that provides the information';
         COMMENT ON COLUMN data_points.unit IS 'AN optional unit description'; 
-    """)
+    """))
 
-    op.execute("""
+    op.execute(sa.text("""
         CREATE TABLE forecasts (
             dp_id INTEGER NOT NULL,
             obs_time TIMESTAMPTZ NOT NULL, -- Real-time instant of the forecasted observation
@@ -54,14 +54,14 @@ def upgrade():
         COMMENT ON COLUMN forecasts.obs_time IS 'Time of the forecasted observation';
         COMMENT ON COLUMN forecasts.fc_time IS 'Time the forecast was computed or fetched';
         COMMENT ON COLUMN forecasts.value IS 'The forecasted value';
-    """)
+    """))
 
-    op.execute("""
+    op.execute(sa.text("""
         SELECT create_hypertable('forecasts', 'obs_time');  -- Partition by observation time
         CREATE INDEX idx_forecasts_id_obs_time ON forecasts(dp_id, obs_time);  
-    """)
+    """))
 
-    op.execute("""
+    op.execute(sa.text("""
         CREATE TABLE measurements (
             dp_id INTEGER NOT NULL,
             obs_time TIMESTAMPTZ NOT NULL,
@@ -73,18 +73,18 @@ def upgrade():
         COMMENT ON COLUMN measurements.dp_id IS 'The reference to the corresponding data point description';
         COMMENT ON COLUMN measurements.obs_time IS 'The real-time instant of the observation';
         COMMENT ON COLUMN measurements.value IS 'The recorded value';
-    """)
+    """))
 
-    op.execute("""
+    op.execute(sa.text("""
         SELECT create_hypertable('measurements', 'obs_time');  -- Partition by observation time
         CREATE INDEX idx_measurements_id_obs_time ON measurements(dp_id, obs_time);
-    """)
+    """))
 
 
 def downgrade():
     """Removes the entire database"""
-    op.execute("DROP INDEX idx_measurements_id_obs_time")
-    op.execute("DROP TABLE measurements")
-    op.execute("DROP INDEX idx_forecasts_id_obs_time")
-    op.execute("DROP TABLE forecasts")
-    op.execute("DROP TABLE data_points")
+    op.execute(sa.text("DROP INDEX idx_measurements_id_obs_time"))
+    op.execute(sa.text("DROP TABLE measurements"))
+    op.execute(sa.text("DROP INDEX idx_forecasts_id_obs_time"))
+    op.execute(sa.text("DROP TABLE forecasts"))
+    op.execute(sa.text("DROP TABLE data_points"))
