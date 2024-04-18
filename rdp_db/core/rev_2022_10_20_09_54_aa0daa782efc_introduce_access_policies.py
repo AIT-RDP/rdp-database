@@ -93,6 +93,8 @@ def upgrade_security_model():
             USING (pg_has_role(current_user, view_role, 'MEMBER'));
     """))
 
+    # It looks like the INHERIT modifications is applied too late. The previous role membership definitions are
+    # already created with NOINHERIT (#6)
     op.execute(sa.text(f"""
         -- INHERIT needed to trigger the correct policies
         ALTER ROLE "{data_source_user}" INHERIT;
