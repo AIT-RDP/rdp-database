@@ -10,6 +10,8 @@ import dotenv
 import sqlalchemy
 import tenacity
 
+import rdp_db.utils.db_version as db_version
+
 # Populate the local environment variables
 dotenv.load_dotenv(dotenv_path=".env")
 
@@ -123,6 +125,7 @@ def run_migrations_online():
         context.configure(
             connection=connection, target_metadata=target_metadata
         )
+        db_version.init_version(connection)
 
         with context.begin_transaction():
             context.run_migrations()
