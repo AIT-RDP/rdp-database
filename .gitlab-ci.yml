@@ -4,6 +4,12 @@ stages:
   - release
   - cleanup
 
+include:
+  - component: "$CI_SERVER_FQDN/ees/rdp/generic-components/rdp-cicd-components/kaniko@main"
+    inputs:
+      stage-test-image: release
+
+
 variables:
   CONTAINER_TEST_IMAGE: $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA
 
@@ -54,102 +60,3 @@ build-package-development:
   only:
     - development
     - 4-create-an-installable-python-package
-
-# =============================================================================
-# Create, test and push the docker images
-#
-# WARNING: These jobs execute on a shell runner. Take care not to crash the
-#          system.
-# =============================================================================
-
-# Creates the docker image for productive use
-build-images:
-  stage: build
-  tags:
-    - baremetal
-    - shell
-  script:
-    - docker info
-    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
-    - docker build --pull --file docker/Dockerfile -t $CONTAINER_TEST_IMAGE .
-    - docker push $CONTAINER_TEST_IMAGE
-
-# Template that pushes a release image to $CONTAINER_RELEASE_IMAGE
-.release-image:
-  stage: release
-  tags:
-    - baremetal
-    - shell
-  variables:
-    CONTAINER_REGISTRY_USER: $CI_REGISTRY_USER
-    CONTAINER_REGISTRY_PASSWORD: $CI_REGISTRY_PASSWORD
-    CONTAINER_REGISTRY: $CI_REGISTRY
-  script:
-    - docker info
-    # Log in to the default registry holding the test image
-    - echo "Try to login to the source registry  $CI_REGISTRY given the user $CI_REGISTRY_USER"
-    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
-    # Log in to the external registry to push the release
-    - echo "Try to login to the destination registry  $CONTAINER_REGISTRY given the user $CONTAINER_REGISTRY_USER"
-    - docker login -u $CONTAINER_REGISTRY_USER -p $CONTAINER_REGISTRY_PASSWORD $CONTAINER_REGISTRY
-    # Fetch the test image and publish it to the final registry
-    - docker pull $CONTAINER_TEST_IMAGE
-    - docker tag $CONTAINER_TEST_IMAGE $CONTAINER_RELEASE_IMAGE
-    - docker push $CONTAINER_RELEASE_IMAGE
-
-# Release the latest-tag
-release-image-main:
-  extends: .release-image
-  variables:
-    CONTAINER_RELEASE_IMAGE: $EXT_REGISTRY/$CI_PROJECT_NAME:latest
-    CONTAINER_REGISTRY_USER: $EXT_REGISTRY_USER
-    CONTAINER_REGISTRY_PASSWORD: $EXT_REGISTRY_PASSWORD
-    CONTAINER_REGISTRY: $EXT_REGISTRY
-  tags:
-    - baremetal
-    - shell
-  only:
-    - main
-    - master
-
-# release the latest-dev tag
-release-image-tag:
-  extends: .release-image
-  variables:
-    CONTAINER_RELEASE_IMAGE: $EXT_REGISTRY/$CI_PROJECT_NAME:$CI_COMMIT_TAG
-    CONTAINER_REGISTRY_USER: $EXT_REGISTRY_USER
-    CONTAINER_REGISTRY_PASSWORD: $EXT_REGISTRY_PASSWORD
-    CONTAINER_REGISTRY: $EXT_REGISTRY
-  tags:
-    - baremetal
-    - shell
-  rules:
-    - if: $CI_COMMIT_TAG
-
-# release the latest-dev tag
-release-image-dev:
-  extends: .release-image
-  variables:
-    CONTAINER_RELEASE_IMAGE: $EXT_REGISTRY/$CI_PROJECT_NAME:latest-dev
-    CONTAINER_REGISTRY_USER: $EXT_REGISTRY_USER
-    CONTAINER_REGISTRY_PASSWORD: $EXT_REGISTRY_PASSWORD
-    CONTAINER_REGISTRY: $EXT_REGISTRY
-  tags:
-    - baremetal
-    - shell
-  only:
-    - development
-
-# Removes any local docker image to avoid littering the build host
-cleanup-images:
-  stage: cleanup
-  tags:
-    - baremetal
-    - shell
-  script:
-    - docker info
-    # all images are tagged by the local registry, anyway. Hence, there is no need to explicitly search for remote ones
-    - docker images --filter=reference="${CI_REGISTRY_IMAGE}"
-    - docker rmi -f $(docker images --filter=reference="${CI_REGISTRY_IMAGE}" -q)
-    - docker images
-  when: always
