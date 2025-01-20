@@ -39,7 +39,7 @@ test-unit-default:
   script:
     - pip install -r requirements-dev.txt
     - poetry install --all-extras --with dev
-    - PYTHONPATH="${PYTHONPATH}:.:tests" poetry run pytest --junitxml=report.xml --log-cli-level=DEBUG test
+    - PYTHONPATH="${PYTHONPATH}:.:tests" poetry run pytest --junitxml=report.xml --log-cli-level=DEBUG tests
   artifacts: # Collect test results
     when: always
     paths:
