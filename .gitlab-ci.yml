@@ -14,6 +14,42 @@ variables:
   CONTAINER_TEST_IMAGE: $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA
 
 # =============================================================================
+# Execute the unit tests
+# =============================================================================
+
+test-unit-default:
+  extends: .test-unit
+
+.test-unit:
+  stage: test
+  variables:
+    TS_VERSION: "2.11.2-pg14"
+    PYTHON_VERSION: "3.11"
+    RDP_POSTGRES_HOST: "postgres"
+    POSTGRES_DB: "rdp_db"
+    RDP_POSTGRES_URL: "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres/rdp_db"
+    RDP_POSTGRES_URL_INIT: "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres"
+  services:
+    - name: ${CI_DEPENDENCY_PROXY_DIRECT_GROUP_IMAGE_PREFIX}/timescale/timescaledb:${TS_VERSION}
+      alias: postgres
+  tags:
+    - docker
+    - x86_64
+  image: ${CI_DEPENDENCY_PROXY_DIRECT_GROUP_IMAGE_PREFIX}/python:${PYTHON_VERSION}
+  script:
+    - pip install -r requirements-dev.txt
+    - poetry install --all-groups
+    - PYTHONPATH="${PYTHONPATH}:.:tests" pytest --junitxml=report.xml --log-cli-level=DEBUG test
+  artifacts: # Collect test results
+    when: always
+    paths:
+      - report.xml
+    reports:
+      junit: report.xml
+
+
+
+# =============================================================================
 # Build the installable package
 # =============================================================================
 
