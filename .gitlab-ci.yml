@@ -38,7 +38,7 @@ test-unit-default:
   image: ${CI_DEPENDENCY_PROXY_DIRECT_GROUP_IMAGE_PREFIX}/python:${PYTHON_VERSION}
   script:
     - pip install -r requirements-dev.txt
-    - poetry install --all-groups
+    - poetry install --all-extras --with dev
     - PYTHONPATH="${PYTHONPATH}:.:tests" pytest --junitxml=report.xml --log-cli-level=DEBUG test
   artifacts: # Collect test results
     when: always
