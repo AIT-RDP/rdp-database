@@ -84,3 +84,62 @@ def clean_db():
 
     return ""
 
+
+@pytest.fixture()
+def basic_dp_test_set(clean_db, sql_engine_data_source) -> dict[str, int]:
+    """Defines a basic set of datapoints and returns their IDs."""
+    return {
+        "loc0-dev0-pub-0": _create_dp(
+            sql_engine_data_source, "name_0", "device_0", "location_0", "provider_0",
+            view_role="view_public"
+        ),
+        "loc0-dev0-pub-1": _create_dp(
+            sql_engine_data_source, "name_1", "device_0", "location_0", "provider_0",
+            view_role="view_public"
+        ),
+        "loc1-dev1-pub-0": _create_dp(
+            sql_engine_data_source, "name_0", "device_1", "location_1", "provider_0",
+            view_role="view_public"
+        ),
+        "loc0-dev0-pr-2": _create_dp(
+            sql_engine_data_source, "name_2", "device_0", "location_0", "provider_0",
+            view_role="view_private"
+        ),
+    }
+
+
+def _create_dp(eng: sql.Engine, name, device_id, location_code, data_provider, unit=None, metadata=None,
+               view_role=None):
+    """Creates (or returns) the datapoint and returns its number"""
+
+    if metadata is None:
+        metadata = {}
+
+    with eng.connect() as con:
+        params = [  # metadata needs special treatment. Hence, the explicit construction
+            sql.bindparam("metadata", metadata, type_=sql.dialects.postgresql.JSONB),
+            sql.bindparam("name", name), sql.bindparam("device_id", device_id),
+            sql.bindparam("location_code", location_code), sql.bindparam("data_provider", data_provider),
+            sql.bindparam("unit", unit)
+        ]
+
+        res = con.execute(sql.text("""
+            SELECT get_or_create_data_point_id(
+                    :name, :device_id, :location_code, :data_provider, :unit, :metadata
+                ) AS dp_id;
+        """).bindparams(*params))
+
+        res = res.mappings().fetchall()
+        assert len(res) == 1, "No results returned by the query"
+        assert "dp_id" in res[0], "No pd_id returned by query"
+
+        dp_id = res[0]["dp_id"]
+
+        # Update the view role, if needed
+        if view_role is not None:
+            con.execute(sql.text("""
+                UPDATE data_points SET view_role=:view_role WHERE id=:dp_id;
+            """), parameters=dict(view_role=view_role, dp_id=dp_id))
+
+        con.commit()
+    return dp_id

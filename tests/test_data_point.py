@@ -115,7 +115,7 @@ def test_dp_update(clean_db, sql_engine_data_source):
     pd.testing.assert_series_equal(data["metadata"], pd.Series([{"hello": "testing"}, {}]), check_names=False)
 
 
-def test_get_or_create_data_point_id_basic(clean_db,sql_engine_data_source):
+def test_get_or_create_data_point_id_basic(clean_db, sql_engine_data_source):
     """Tests the on-the-fly data point creation"""
 
     with sql_engine_data_source.connect() as con:
@@ -160,3 +160,27 @@ def test_get_or_create_data_point_id_basic(clean_db,sql_engine_data_source):
     pd.testing.assert_series_equal(data["unit"], pd.Series(["1", None]), check_names=False)
     pd.testing.assert_series_equal(data["metadata"], pd.Series([{"": ""}, {}]), check_names=False)
 
+
+def test_basic_dp_test_set(basic_dp_test_set, sql_engine_data_source):
+    """Tests the test-set itself"""
+
+    with sql_engine_data_source.connect() as con:
+        data = pd.read_sql("""
+            SELECT id, name, device_id, location_code, data_provider, view_role 
+                FROM data_points 
+                ORDER BY name;
+            """, con, index_col="id")
+
+    expected_test_dps = ["loc0-dev0-pub-0", "loc0-dev0-pub-1", "loc1-dev1-pub-0", "loc0-dev0-pr-2"]
+
+    assert data.index.size >= len(expected_test_dps)
+    data_point_ids = [basic_dp_test_set[dp] for dp in expected_test_dps]
+    data_points = data.loc[data_point_ids]  # Order and filter by expectation
+
+    pd.testing.assert_frame_equal(data_points, pd.DataFrame({
+        "name": ["name_0", "name_1", "name_0", "name_2"],
+        "device_id": ["device_0", "device_0", "device_1", "device_0"],
+        "location_code": ["location_0", "location_0", "location_1", "location_0"],
+        "data_provider": ["provider_0", "provider_0", "provider_0", "provider_0"],
+        "view_role": ["view_public", "view_public", "view_public", "view_private"]
+    }, index=data_point_ids), check_names=False)
