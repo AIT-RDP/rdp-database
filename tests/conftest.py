@@ -152,3 +152,51 @@ def _create_dp(eng: sql.Engine, name, device_id, location_code, data_provider, u
 
         con.commit()
     return dp_id
+
+
+@pytest.fixture()
+def mixed_dataset(basic_dp_test_set, sql_engine_data_source):
+    """Defines a basic mixed dataset"""
+
+    dp_mea_a = basic_dp_test_set["loc0-dev0-pub-0"]
+    dp_mea_b = basic_dp_test_set["loc0-dev0-pr-2"]
+
+    dp_fc_a = basic_dp_test_set["loc0-dev0-pub-1"]
+    dp_fc_b = basic_dp_test_set["loc0-dev0-pr-2"]  # Intentionally the same datapoint for measurements and forecasts
+
+    with sql_engine_data_source.connect() as con:
+        con.execute(sql.text("""
+            INSERT INTO measurements(dp_id, obs_time, value) VALUES
+                (:dp_mea_a, '2024-12-24T00:00:00Z', 1.0),
+                (:dp_mea_a, '2024-12-24T06:00:00Z', 2.0),
+                (:dp_mea_a, '2024-12-24T12:00:00Z', 3.0),
+                (:dp_mea_a, '2024-12-24T18:00:00Z', 4.0),
+
+                (:dp_mea_b, '2024-12-24T00:00:00Z', 5.0),
+                (:dp_mea_b, '2024-12-24T06:00:00Z', 6.0),
+                (:dp_mea_b, '2024-12-24T12:00:00Z', 7.0),
+                (:dp_mea_b, '2024-12-24T18:00:00Z', 8.0);
+        """), parameters=dict(dp_mea_a=dp_mea_a, dp_mea_b=dp_mea_b))
+        con.execute(sql.text("""
+            INSERT INTO forecasts(dp_id, fc_time, obs_time, value) VALUES
+                (:dp_fc_a, '2024-12-23T00:00:00Z', '2024-12-24T00:00:00Z', 1.0),
+                (:dp_fc_a, '2024-12-23T00:00:00Z', '2024-12-24T06:00:00Z', 2.0),
+                (:dp_fc_a, '2024-12-23T00:00:00Z', '2024-12-24T12:00:00Z', 3.0),
+                (:dp_fc_a, '2024-12-23T00:00:00Z', '2024-12-24T18:00:00Z', 4.0),
+
+                (:dp_fc_a, '2024-12-23T12:00:00Z', '2024-12-24T00:00:00Z', 1.5),
+                (:dp_fc_a, '2024-12-23T12:00:00Z', '2024-12-24T06:00:00Z', 2.5),
+                (:dp_fc_a, '2024-12-23T12:00:00Z', '2024-12-24T12:00:00Z', 3.5),
+                (:dp_fc_a, '2024-12-23T12:00:00Z', '2024-12-24T18:00:00Z', 4.5),
+
+                (:dp_fc_b, '2024-12-23T00:00:00Z', '2024-12-24T00:00:00Z', 5.0),
+                (:dp_fc_b, '2024-12-23T00:00:00Z', '2024-12-24T06:00:00Z', 6.0),
+                (:dp_fc_b, '2024-12-23T00:00:00Z', '2024-12-24T12:00:00Z', 7.0),
+                (:dp_fc_b, '2024-12-23T00:00:00Z', '2024-12-24T18:00:00Z', 8.0);
+        """), parameters=dict(dp_fc_a=dp_fc_a, dp_fc_b=dp_fc_b))
+        con.commit()
+
+    return {
+        **basic_dp_test_set,
+        "dp_mea_a": dp_mea_a, "dp_mea_b": dp_mea_b, "dp_fc_a": dp_fc_a, "dp_fc_b": dp_fc_b
+    }
