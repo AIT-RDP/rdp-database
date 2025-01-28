@@ -131,7 +131,8 @@ def downgrade():
 def downgrade_hypertable_organization():
     """Downgrades the hypertable fc organization and decompresses the data"""
     op.execute(sa.text("""
-        SELECT remove_compression_policy('forecasts', true);
+        LOCK TABLE forecasts IN ACCESS EXCLUSIVE MODE;  -- Make sure the table is entirely ours to avoid deadlocks
+        SELECT remove_compression_policy('forecasts', true); 
         SELECT set_chunk_time_interval('forecasts', INTERVAL '7 days');
         -- Decompressed all compressed chunks. If that command fails with a deadlock, consider to stop the feeder 
         -- processes like RedSQL
@@ -142,6 +143,7 @@ def downgrade_hypertable_organization():
     """))
 
     op.execute(sa.text("""
+        LOCK TABLE measurements IN ACCESS EXCLUSIVE MODE;  -- Make sure the table is entirely ours to avoid deadlocks
         SELECT remove_compression_policy('measurements', true);
         SELECT set_chunk_time_interval('measurements', INTERVAL '7 days');
         -- Decompressed all compressed chunks. If that command fails with a deadlock, consider to stop the feeder 
