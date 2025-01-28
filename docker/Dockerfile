@@ -19,6 +19,7 @@ RUN poetry install --without dev --no-root && \
 
 # Build the runtime image
 FROM ${DOCKER_PROXY_PREFIX}python:3.10-slim
+WORKDIR /app
 
 # Use the environment variables instead of arguments to specify the config and .env file. This should make both
 # customization and invoking subcommands easier. Additionally, the venc is set without having to use poetry

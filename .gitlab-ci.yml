@@ -21,16 +21,19 @@ test-unit-pg14:
   extends: .test-unit
   variables:
     TS_VERSION: "2.11.2-pg14"
+    RDP_EXPECTED_POSTGRES_VERSION: "14\..*"
 
 test-unit-pg16:
   extends: .test-unit
   variables:
     TS_VERSION: "2.17.2-pg16"
+    RDP_EXPECTED_POSTGRES_VERSION: "16\..*"
 
 test-unit-pg17:
   extends: .test-unit
   variables:
     TS_VERSION: "2.17.2-pg17"
+    RDP_EXPECTED_POSTGRES_VERSION: "17\..*"
 
 .test-unit:
   stage: test
