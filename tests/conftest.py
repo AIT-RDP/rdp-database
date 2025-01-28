@@ -5,6 +5,7 @@ The logic was originally developed in the Edge4Energy activities. Make sure that
 test runner itself, as the runner implementation does no variables replacement and the runner environment would take
 precedence.
 """
+import contextlib
 import os
 import urllib.parse
 
@@ -20,37 +21,45 @@ dotenv.load_dotenv(dotenv_path=".env")
 def sql_engine_postgres() -> sql.engine.Engine:
     """Returns the engine that connects with the postgres admin user"""
 
-    return get_user_engine(os.environ["POSTGRES_USER"], os.environ["POSTGRES_PASSWORD"])
+    with get_user_engine(os.environ["POSTGRES_USER"], os.environ["POSTGRES_PASSWORD"]) as e:
+        yield e
 
 
 @pytest.fixture()
 def sql_engine_data_source() -> sql.engine.Engine:
     """Returns the engine that connects with the postgres admin user"""
 
-    return get_user_engine(os.environ["POSTGRES_DATA_SOURCE_USER"], os.environ["POSTGRES_DATA_SOURCE_PASSWORD"])
+    with get_user_engine(os.environ["POSTGRES_DATA_SOURCE_USER"], os.environ["POSTGRES_DATA_SOURCE_PASSWORD"]) as e:
+        yield e
 
 
 @pytest.fixture()
 def sql_engine_private_vis() -> sql.engine.Engine:
     """Returns the engine that connects with the postgres admin user"""
 
-    return get_user_engine(os.environ["POSTGRES_DATA_VIS_USER"], os.environ["POSTGRES_DATA_VIS_PASSWORD"])
+    with get_user_engine(os.environ["POSTGRES_DATA_VIS_USER"], os.environ["POSTGRES_DATA_VIS_PASSWORD"]) as e:
+        yield e
 
 
 @pytest.fixture()
 def sql_engine_public_vis() -> sql.engine.Engine:
     """Returns the engine that connects with the postgres admin user"""
 
-    return get_user_engine(os.environ["POSTGRES_DATA_PUB_VIS_USER"], os.environ["POSTGRES_DATA_PUB_VIS_PASSWORD"])
+    with get_user_engine(os.environ["POSTGRES_DATA_PUB_VIS_USER"], os.environ["POSTGRES_DATA_PUB_VIS_PASSWORD"]) as e:
+        yield e
 
 
+@contextlib.contextmanager
 def get_user_engine(username, password) -> sql.Engine:
     """Creates the DB connection from the given credentials and tests it."""
 
     engine_url = get_sql_url(username, password)
     engine = sql.create_engine(engine_url, pool_size=2, max_overflow=2, pool_timeout=2)
-    engine.connect()
-    return engine
+    with engine.connect():
+        pass  # Just test the connection
+
+    yield engine
+    engine.dispose(close=True)
 
 
 def get_sql_url(username: str, password: str):
