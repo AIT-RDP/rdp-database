@@ -12,7 +12,7 @@ import sqlalchemy.sql as sql
 def test_db_version(sql_engine_postgres):
     """Test whether the DB connection is succesful and whether the DB version is as expected"""
 
-    with sql_engine_postgres.connect() as con:
+    with sql_engine_postgres.begin() as con:
         res = con.execute(sql.text("SHOW server_version"))
         res = res.mappings().fetchall()
 

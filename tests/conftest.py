@@ -55,8 +55,6 @@ def get_user_engine(username, password) -> sql.Engine:
 
     engine_url = get_sql_url(username, password)
     engine = sql.create_engine(engine_url, pool_size=2, max_overflow=2, pool_timeout=2)
-    with engine.connect():
-        pass  # Just test the connection
 
     yield engine
     engine.dispose(close=True)
@@ -124,7 +122,7 @@ def _create_dp(eng: sql.Engine, name, device_id, location_code, data_provider, u
     if metadata is None:
         metadata = {}
 
-    with eng.connect() as con:
+    with eng.begin() as con:
         params = [  # metadata needs special treatment. Hence, the explicit construction
             sql.bindparam("metadata", metadata, type_=sql.dialects.postgresql.JSONB),
             sql.bindparam("name", name), sql.bindparam("device_id", device_id),
@@ -150,7 +148,6 @@ def _create_dp(eng: sql.Engine, name, device_id, location_code, data_provider, u
                 UPDATE data_points SET view_role=:view_role WHERE id=:dp_id;
             """), parameters=dict(view_role=view_role, dp_id=dp_id))
 
-        con.commit()
     return dp_id
 
 
@@ -164,7 +161,7 @@ def mixed_dataset(basic_dp_test_set, sql_engine_data_source):
     dp_fc_a = basic_dp_test_set["loc0-dev0-pub-1"]
     dp_fc_b = basic_dp_test_set["loc0-dev0-pr-2"]  # Intentionally the same datapoint for measurements and forecasts
 
-    with sql_engine_data_source.connect() as con:
+    with sql_engine_data_source.begin() as con:
         con.execute(sql.text("""
             INSERT INTO measurements(dp_id, obs_time, value) VALUES
                 (:dp_mea_a, '2024-12-24T00:00:00Z', 1.0),
@@ -194,7 +191,6 @@ def mixed_dataset(basic_dp_test_set, sql_engine_data_source):
                 (:dp_fc_b, '2024-12-23T00:00:00Z', '2024-12-24T12:00:00Z', 7.0),
                 (:dp_fc_b, '2024-12-23T00:00:00Z', '2024-12-24T18:00:00Z', 8.0);
         """), parameters=dict(dp_fc_a=dp_fc_a, dp_fc_b=dp_fc_b))
-        con.commit()
 
     return {
         **basic_dp_test_set,
