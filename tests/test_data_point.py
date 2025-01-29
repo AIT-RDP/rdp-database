@@ -178,5 +178,5 @@ def test_basic_dp_test_set(basic_dp_test_set, sql_engine_data_source):
         "device_id": ["device_0", "device_0", "device_1", "device_0"],
         "location_code": ["location_0", "location_0", "location_1", "location_0"],
         "data_provider": ["provider_0", "provider_0", "provider_0", "provider_0"],
-        "view_role": ["view_public", "view_public", "view_public", "view_private"]
+        "view_role": ["view_public", "view_public", "view_public", "view_internal"]
     }, index=data_point_ids), check_names=False)

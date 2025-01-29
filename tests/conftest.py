@@ -98,11 +98,11 @@ def basic_dp_test_set(clean_db, sql_engine_data_source) -> dict[str, int]:
     return {
         "loc0-dev0-pub-0": _create_dp(
             sql_engine_data_source, "name_0", "device_0", "location_0", "provider_0",
-            view_role="view_public"
+            view_role="view_public", unit="ISO football fields", metadata={"note": "with 10mm grass only"}
         ),
         "loc0-dev0-pub-1": _create_dp(
             sql_engine_data_source, "name_1", "device_0", "location_0", "provider_0",
-            view_role="view_public"
+            view_role="view_public", unit="DIN bathtubs", metadata={"note": "don't trust the units"}
         ),
         "loc1-dev1-pub-0": _create_dp(
             sql_engine_data_source, "name_0", "device_1", "location_1", "provider_0",
@@ -110,7 +110,7 @@ def basic_dp_test_set(clean_db, sql_engine_data_source) -> dict[str, int]:
         ),
         "loc0-dev0-pr-2": _create_dp(
             sql_engine_data_source, "name_2", "device_0", "location_0", "provider_0",
-            view_role="view_private"
+            view_role="view_internal"
         ),
     }
 
