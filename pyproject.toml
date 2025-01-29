@@ -15,6 +15,10 @@ psycopg2-binary = "^2.9.9"
 tenacity = "^8.2.3"
 
 
+[tool.poetry.group.dev.dependencies]
+pandas = "^2.2.3"
+pytest = "^8.3.4"
+
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"

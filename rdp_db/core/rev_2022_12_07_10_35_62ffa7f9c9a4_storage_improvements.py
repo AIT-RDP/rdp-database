@@ -38,8 +38,8 @@ def upgrade_hypertable_organization():
             timescaledb.compress=true,
             timescaledb.compress_segmentby='dp_id'
         );
-        SELECT add_compression_policy('measurements', INTERVAL '2 days');
         SELECT set_chunk_time_interval('measurements', INTERVAL '5 days');
+        SELECT add_compression_policy('measurements', INTERVAL '2 days');
     """))
 
     op.execute(sa.text("""
@@ -48,8 +48,8 @@ def upgrade_hypertable_organization():
             timescaledb.compress_segmentby='dp_id',
             timescaledb.compress_orderby='obs_time DESC, fc_time DESC'
         );
-        SELECT add_compression_policy('forecasts', INTERVAL '2 days');
         SELECT set_chunk_time_interval('forecasts', INTERVAL '24 hours');
+        SELECT add_compression_policy('forecasts', INTERVAL '2 days');
     """))
 
 
@@ -131,8 +131,8 @@ def downgrade():
 def downgrade_hypertable_organization():
     """Downgrades the hypertable fc organization and decompresses the data"""
     op.execute(sa.text("""
+        SELECT remove_compression_policy('forecasts', true); 
         SELECT set_chunk_time_interval('forecasts', INTERVAL '7 days');
-        SELECT remove_compression_policy('forecasts', true);
         -- Decompressed all compressed chunks. If that command fails with a deadlock, consider to stop the feeder 
         -- processes like RedSQL
         SELECT decompress_chunk(format('%I.%I', chunk_schema, chunk_name)::regclass) 
@@ -142,8 +142,8 @@ def downgrade_hypertable_organization():
     """))
 
     op.execute(sa.text("""
-        SELECT set_chunk_time_interval('measurements', INTERVAL '7 days');
         SELECT remove_compression_policy('measurements', true);
+        SELECT set_chunk_time_interval('measurements', INTERVAL '7 days');
         -- Decompressed all compressed chunks. If that command fails with a deadlock, consider to stop the feeder 
         -- processes like RedSQL
         SELECT decompress_chunk(format('%I.%I', chunk_schema, chunk_name)::regclass) 
