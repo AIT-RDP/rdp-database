@@ -10,9 +10,11 @@ import os
 import urllib.parse
 
 import alembic.config
+import dotenv
 import pytest
 import sqlalchemy as sql
-import dotenv
+import sqlalchemy.exc
+import tenacity
 
 dotenv.load_dotenv(dotenv_path=".env")
 
@@ -77,6 +79,23 @@ def get_sql_url(username: str, password: str):
 def clean_db():
     """Provides a clean DB environment by resetting and building the entire DB via alembic"""
 
+    do_redeployment_cycle()
+    return ""
+
+
+@tenacity.retry(
+    wait=tenacity.wait_exponential(multiplier=1.2, min=1, max=10),
+    stop=tenacity.stop_after_delay(30),
+    retry=tenacity.retry_if_exception_type(sqlalchemy.exc.OperationalError)
+)
+def do_redeployment_cycle():
+    """
+    Performs a full redeployment cycle erasing all data
+
+    Since downgrading the timescale tables often runs into a deadlock, the operation is retried, if such a deadlock
+    is detected.
+    """
+
     alembic_args = [
         '--raiseerr',
         'downgrade', 'base',
@@ -88,8 +107,6 @@ def clean_db():
         'upgrade', 'head',
     ]
     alembic.config.main(argv=alembic_args)
-
-    return ""
 
 
 @pytest.fixture()
