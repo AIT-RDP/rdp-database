@@ -1,7 +1,9 @@
 """
 datatype extension
 
-Extends the time series such that additional datatypes can be handled.
+Extends the time series such that additional datatypes can be handled. Note that this script is in no way
+sql-injection-save. If you request an SQL injection, you'll get it. Make sure to feed the script only with trusted
+content.
 
 Revision ID: 0678397a4d04
 Revises: 615038092266
@@ -26,6 +28,7 @@ def upgrade():
     upgrade_move_data()
     upgrade_create_legacy_views()
     upgrade_type_system()
+    upgrade_new_ts_tables()
     upgrade_type_checks()
 
 
@@ -33,17 +36,18 @@ def upgrade_move_data():
     """Rename the existing forecasts and measurements tables and drop the permissions that are not needed anymore"""
 
     data_vis_user = os.environ['POSTGRES_DATA_VIS_USER']
+    data_source_user = os.environ['POSTGRES_DATA_SOURCE_USER']
 
     op.execute(sql.text(f"""
         ALTER TABLE measurements RENAME TO raw_unitemporal_double;
         -- No more direct data access for the visualization user. Use the guarded views instead.
-        REVOKE ALL PRIVILEGES ON TABLE raw_unitemporal_double FROM {data_vis_user}; 
+        REVOKE ALL PRIVILEGES ON TABLE raw_unitemporal_double FROM {data_vis_user}, {data_source_user}; 
     """))
 
     op.execute(sql.text(f"""
         ALTER TABLE forecasts RENAME TO raw_bitemporal_double;
         -- No more direct data access for the visualization user. Use the guarded views instead.
-        REVOKE ALL PRIVILEGES ON TABLE raw_bitemporal_double FROM {data_vis_user}; 
+        REVOKE ALL PRIVILEGES ON TABLE raw_bitemporal_double FROM {data_vis_user}, {data_source_user}; 
     """))
 
 
@@ -77,6 +81,71 @@ def upgrade_type_system():
     op.execute(sql.text("""
         ALTER TABLE data_points ADD COLUMN data_type time_series_data_type NOT NULL DEFAULT 'double';
         ALTER TABLE data_points ADD COLUMN temporality time_series_temporality DEFAULT NULL;
+    """))
+
+
+def upgrade_new_ts_tables():
+    """Creates the new time-series tables for various data types"""
+
+    create_unitemporal_table("bigint")
+    create_bitemporal_table("bigint")
+
+    create_unitemporal_table("boolean")
+    create_bitemporal_table("boolean")
+
+    create_unitemporal_table("jsonb")
+    create_bitemporal_table("jsonb")
+
+
+def create_unitemporal_table(data_type: str):
+    """Creates an unitemporal tables for the given data type"""
+
+    data_type_infix = data_type.replace(" ", "_")
+
+    op.execute(sql.text(f"""
+        CREATE TABLE raw_unitemporal_{data_type_infix} (
+            dp_id INTEGER NOT NULL,
+            obs_time TIMESTAMPTZ NOT NULL,
+            value {data_type} NULL,
+            PRIMARY KEY (dp_id, obs_time),
+            FOREIGN KEY (dp_id) REFERENCES data_points(id)
+        );
+        COMMENT ON TABLE raw_unitemporal_{data_type_infix} 
+            IS 'Stores the actual time series for type {data_type} having one observation timestamp';
+    """))
+
+    grant_data_table_permissions(f"raw_unitemporal_{data_type_infix}")
+    # TODO: Enable timescale on this table
+
+
+def create_bitemporal_table(data_type: str):
+    """Creates a bitemporal tables for the given data type"""
+
+    data_type_infix = data_type.replace(" ", "_")
+
+    op.execute(sql.text(f"""
+        CREATE TABLE raw_bitemporal_{data_type_infix} (
+            dp_id INTEGER NOT NULL,
+            obs_time TIMESTAMPTZ NOT NULL,
+            fc_time TIMESTAMPTZ NOT NULL,
+            value {data_type} NULL,
+            PRIMARY KEY (dp_id, obs_time, fc_time),
+            FOREIGN KEY (dp_id) REFERENCES data_points(id)
+        );
+        COMMENT ON TABLE raw_unitemporal_{data_type_infix} 
+            IS 'Stores the actual time series for type {data_type} having a dedicated observation and generation time';
+    """))
+
+    grant_data_table_permissions(f"raw_bitemporal_{data_type_infix}")
+    # TODO: Enable timescale on this table
+
+
+def grant_data_table_permissions(table_name):
+    """Grants the permissions fo the newly generate data table"""
+
+    op.execute(sql.text(f"""
+        GRANT SELECT, INSERT, UPDATE ON {table_name} TO data_source_base;
+        GRANT SELECT ON {table_name} TO restricting_view_executor
     """))
 
 
@@ -120,6 +189,15 @@ def upgrade_type_checks():
     add_type_check("raw_unitemporal_double", "double", "unitemporal")
     add_type_check("raw_bitemporal_double", "double", "bitemporal")
 
+    add_type_check("raw_unitemporal_bigint", "bigint", "unitemporal")
+    add_type_check("raw_bitemporal_bigint", "bigint", "bitemporal")
+
+    add_type_check("raw_unitemporal_boolean", "boolean", "unitemporal")
+    add_type_check("raw_bitemporal_boolean", "boolean", "bitemporal")
+
+    add_type_check("raw_unitemporal_jsonb", "jsonb", "unitemporal")
+    add_type_check("raw_bitemporal_jsonb", "jsonb", "bitemporal")
+
 
 def add_type_check(table_name, data_type, temporality):
     """Creates the type check trigger on the particular table"""
@@ -137,8 +215,19 @@ def downgrade():
     """Reverts the changes of this revision"""
 
     downgrade_type_system()
+    downgrade_new_ts_tables()
     downgrade_legacy_views()
     downgrade_move_data()
+
+
+def downgrade_new_ts_tables():
+    """Drops the new tables including all the contained data"""
+
+    op.execute(sql.text("""
+        DROP TABLE IF EXISTS raw_unitemporal_bigint, raw_bitemporal_bigint;
+        DROP TABLE IF EXISTS raw_unitemporal_boolean, raw_bitemporal_boolean;
+        DROP TABLE IF EXISTS raw_unitemporal_jsonb, raw_bitemporal_jsonb;
+    """))
 
 
 def downgrade_type_checks():
@@ -147,6 +236,16 @@ def downgrade_type_checks():
     op.execute(sql.text("""
         DROP TRIGGER IF EXISTS check_type ON raw_bitemporal_double;
         DROP TRIGGER IF EXISTS check_type ON raw_unitemporal_double;
+
+        DROP TRIGGER IF EXISTS check_type ON raw_bitemporal_bigint;
+        DROP TRIGGER IF EXISTS check_type ON raw_unitemporal_bigint;
+
+        DROP TRIGGER IF EXISTS check_type ON raw_bitemporal_boolean;
+        DROP TRIGGER IF EXISTS check_type ON raw_unitemporal_boolean;
+
+        DROP TRIGGER IF EXISTS check_type ON raw_bitemporal_jsonb;
+        DROP TRIGGER IF EXISTS check_type ON raw_unitemporal_jsonb;
+
         DROP FUNCTION rdp_tr_check_type;
     """))
 
@@ -176,12 +275,16 @@ def downgrade_move_data():
     """Moves the floating point time series data back to its old location and enable direct vis user access"""
 
     data_vis_user = os.environ['POSTGRES_DATA_VIS_USER']
+    data_source_user = os.environ['POSTGRES_DATA_SOURCE_USER']
+
     op.execute(sql.text(f"""
         GRANT SELECT ON TABLE raw_bitemporal_double TO {data_vis_user};
+        GRANT SELECT, UPDATE, INSERT ON TABLE raw_bitemporal_double TO {data_source_user};
         ALTER TABLE raw_bitemporal_double RENAME TO forecasts;
     """))
 
     op.execute(sql.text(f"""
         GRANT SELECT ON TABLE raw_unitemporal_double TO {data_vis_user};
+        GRANT SELECT, UPDATE, INSERT ON TABLE raw_unitemporal_double TO {data_source_user};
         ALTER TABLE raw_unitemporal_double RENAME TO measurements;
     """))
