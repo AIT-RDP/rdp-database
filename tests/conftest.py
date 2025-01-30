@@ -129,15 +129,87 @@ def basic_dp_test_set(clean_db, sql_engine_data_source) -> dict[str, int]:
             sql_engine_data_source, "name_2", "device_0", "location_0", "provider_0",
             view_role="view_internal"
         ),
+
+        # Data points with a defined datatype and temporality
+        "loc2-dev0-pr-0-uni-dbl-0": _create_dp(
+            sql_engine_data_source, "name_0", "device_0", "location_2", "provider_1",
+            view_role="view_internal", data_type='double', temporality='unitemporal'
+        ),
+        "loc2-dev0-pub-0-uni-dbl-1": _create_dp(
+            sql_engine_data_source, "name_1", "device_0", "location_2", "provider_1",
+            view_role="view_public", data_type='double', temporality='unitemporal'
+        ),
+        "loc2-dev0-pr-0-bi-dbl-0": _create_dp(
+            sql_engine_data_source, "name_0", "device_0", "location_2", "provider_2",
+            view_role="view_internal", data_type='double', temporality='bitemporal'
+        ),
+        "loc2-dev0-pub-0-bi-dbl-1": _create_dp(
+            sql_engine_data_source, "name_1", "device_0", "location_2", "provider_2",
+            view_role="view_public", data_type='double', temporality='bitemporal'
+        ),
+
+        "loc2-dev0-pr-0-uni-int-0": _create_dp(
+            sql_engine_data_source, "name_0", "device_0", "location_3", "provider_1",
+            view_role="view_internal", data_type='bigint', temporality='unitemporal'
+        ),
+        "loc2-dev0-pub-0-uni-int-1": _create_dp(
+            sql_engine_data_source, "name_1", "device_0", "location_3", "provider_1",
+            view_role="view_public", data_type='bigint', temporality='unitemporal'
+        ),
+        "loc2-dev0-pr-0-bi-int-0": _create_dp(
+            sql_engine_data_source, "name_0", "device_0", "location_3", "provider_2",
+            view_role="view_internal", data_type='bigint', temporality='bitemporal'
+        ),
+        "loc2-dev0-pub-0-bi-int-1": _create_dp(
+            sql_engine_data_source, "name_1", "device_0", "location_3", "provider_2",
+            view_role="view_public", data_type='bigint', temporality='bitemporal'
+        ),
+
+        "loc2-dev0-pr-0-uni-bool-0": _create_dp(
+            sql_engine_data_source, "name_0", "device_0", "location_4", "provider_1",
+            view_role="view_internal", data_type='boolean', temporality='unitemporal'
+        ),
+        "loc2-dev0-pub-0-uni-bool-1": _create_dp(
+            sql_engine_data_source, "name_1", "device_0", "location_4", "provider_1",
+            view_role="view_public", data_type='boolean', temporality='unitemporal'
+        ),
+        "loc2-dev0-pr-0-bi-bool-0": _create_dp(
+            sql_engine_data_source, "name_0", "device_0", "location_4", "provider_2",
+            view_role="view_internal", data_type='boolean', temporality='bitemporal'
+        ),
+        "loc2-dev0-pub-0-bi-bool-1": _create_dp(
+            sql_engine_data_source, "name_1", "device_0", "location_4", "provider_2",
+            view_role="view_public", data_type='boolean', temporality='bitemporal'
+        ),
+
+        "loc2-dev0-pr-0-uni-json-0": _create_dp(
+            sql_engine_data_source, "name_0", "device_0", "location_5", "provider_1",
+            view_role="view_internal", data_type='jsonb', temporality='unitemporal'
+        ),
+        "loc2-dev0-pub-0-uni-json-1": _create_dp(
+            sql_engine_data_source, "name_1", "device_0", "location_5", "provider_1",
+            view_role="view_public", data_type='jsonb', temporality='unitemporal'
+        ),
+        "loc2-dev0-pr-0-bi-json-0": _create_dp(
+            sql_engine_data_source, "name_0", "device_0", "location_5", "provider_2",
+            view_role="view_internal", data_type='jsonb', temporality='bitemporal'
+        ),
+        "loc2-dev0-pub-0-bi-json-1": _create_dp(
+            sql_engine_data_source, "name_1", "device_0", "location_5", "provider_2",
+            view_role="view_public", data_type='jsonb', temporality='bitemporal'
+        ),
+
     }
 
 
 def _create_dp(eng: sql.Engine, name, device_id, location_code, data_provider, unit=None, metadata=None,
-               view_role=None):
+               view_role=None, data_type="double", temporality=None):
     """Creates (or returns) the datapoint and returns its number"""
 
     if metadata is None:
         metadata = {}
+    if view_role is None:
+        view_role = "view_internal"
 
     with eng.begin() as con:
         params = [  # metadata needs special treatment. Hence, the explicit construction
@@ -160,10 +232,11 @@ def _create_dp(eng: sql.Engine, name, device_id, location_code, data_provider, u
         dp_id = res[0]["dp_id"]
 
         # Update the view role, if needed
-        if view_role is not None:
-            con.execute(sql.text("""
-                UPDATE data_points SET view_role=:view_role WHERE id=:dp_id;
-            """), parameters=dict(view_role=view_role, dp_id=dp_id))
+        con.execute(sql.text("""
+            UPDATE data_points 
+                SET view_role=:view_role, data_type=:data_type, temporality=:temporality 
+                WHERE id=:dp_id;
+        """), parameters=dict(view_role=view_role, data_type=data_type, temporality=temporality, dp_id=dp_id))
 
     return dp_id
 
