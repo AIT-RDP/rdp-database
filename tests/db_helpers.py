@@ -1,6 +1,7 @@
 """
 Implements some test helper functions that can be used in multiple modules
 """
+import datetime
 
 import sqlalchemy as sql
 
@@ -42,3 +43,16 @@ def create_dp(eng: sql.Engine, name, device_id, location_code, data_provider, un
         """), parameters=dict(view_role=view_role, data_type=data_type, temporality=temporality, dp_id=dp_id))
 
     return dp_id
+
+
+def bind_params(statement, parameters: dict):
+    """Binds the parameters to the statement supporting json"""
+
+    bindings = []
+    for param_key, param_val in parameters.items():
+        if any(isinstance(param_val, tp) for tp in [float, int, bool, datetime.datetime]):
+            bindings.append(sql.bindparam(param_key, param_val))
+        else:
+            bindings.append(sql.bindparam(param_key, param_val, type_=sql.dialects.postgresql.JSONB))
+
+    return statement.bindparams(*bindings)

@@ -31,6 +31,8 @@ def upgrade():
     upgrade_new_ts_tables()
     upgrade_type_checks()
 
+    upgrade_data_views()
+
 
 def upgrade_move_data():
     """Rename the existing forecasts and measurements tables and drop the permissions that are not needed anymore"""
@@ -240,14 +242,97 @@ def add_type_check(table_name, data_type, temporality):
     """))
 
 
+def upgrade_data_views():
+    """Creates the new data views for all type series"""
+
+    append_typed_unitemporal_details_view("double", True)
+    append_typed_unitemporal_details_view("bigint", False)
+    append_typed_unitemporal_details_view("boolean", False)
+    append_typed_unitemporal_details_view("jsonb", False)
+
+    append_typed_bitemporal_details_view("double", True)
+    append_typed_bitemporal_details_view("bigint", False)
+    append_typed_bitemporal_details_view("boolean", False)
+    append_typed_bitemporal_details_view("jsonb", False)
+
+
+def append_typed_unitemporal_details_view(type_name: str, null_temporality: bool):
+    """Appends a single view and sets the appropriate permissions"""
+
+    if null_temporality:
+        temporality_clause = "dp.temporality IS NULL OR"
+    else:
+        temporality_clause = ""
+
+    op.execute(sql.text(f"""
+        CREATE OR REPLACE VIEW unitemporal_{type_name}_details(
+            dp_id, obs_time, value, name, device_id, location_code, data_provider, unit, view_role, metadata, 
+            data_type, temporality
+        ) AS 
+        SELECT dp.id, obs_time, value, dp.name, dp.device_id, dp.location_code, dp.data_provider, dp.unit,
+                dp.view_role, dp.metadata, dp.data_type, dp.temporality
+            FROM raw_unitemporal_{type_name} AS raw
+            JOIN data_points AS dp
+                ON (raw.dp_id = dp.id)
+            WHERE ({temporality_clause} dp.temporality = 'unitemporal') AND dp.data_type='{type_name}';
+        COMMENT ON VIEW unitemporal_{type_name}_details IS 'Joint time series and data point information';
+    """))
+
+    op.execute(sql.text(f"""
+        -- Enables access for vis users to the referenced data tables
+        ALTER VIEW unitemporal_{type_name}_details OWNER TO restricting_view_executor;
+        GRANT SELECT, TRIGGER ON unitemporal_{type_name}_details TO view_base;
+    """))
+
+
+def append_typed_bitemporal_details_view(type_name: str, null_temporality: bool):
+    """Appends a single view and sets the appropriate permissions"""
+
+    if null_temporality:
+        temporality_clause = "dp.temporality IS NULL OR"
+    else:
+        temporality_clause = ""
+
+    op.execute(sql.text(f"""
+        CREATE OR REPLACE VIEW bitemporal_{type_name}_details(
+            dp_id, obs_time, fc_time, value, name, device_id, location_code, data_provider, unit, view_role, metadata, 
+            data_type, temporality
+        ) AS 
+        SELECT dp.id, obs_time, fc_time, value, dp.name, dp.device_id, dp.location_code, dp.data_provider, dp.unit,
+                dp.view_role, dp.metadata, dp.data_type, dp.temporality
+            FROM raw_bitemporal_{type_name} AS raw
+            JOIN data_points AS dp
+                ON (raw.dp_id = dp.id)
+            WHERE ({temporality_clause} dp.temporality = 'bitemporal') AND dp.data_type='{type_name}';
+        COMMENT ON VIEW bitemporal_{type_name}_details IS 'Joint time series and data point information';
+    """))
+
+    op.execute(sql.text(f"""
+        -- Enables access for vis users to the referenced data tables
+        ALTER VIEW bitemporal_{type_name}_details OWNER TO restricting_view_executor;
+        GRANT SELECT, TRIGGER ON bitemporal_{type_name}_details TO view_base;
+    """))
+
+
 def downgrade():
     """Reverts the changes of this revision"""
-
+    downgrade_data_views()
     downgrade_new_ts_tables()
     downgrade_type_checks()
     downgrade_type_system()
     downgrade_legacy_views()
     downgrade_move_data()
+
+
+def downgrade_data_views():
+    """Drops the data views from the database"""
+
+    op.execute(sql.text("""
+        DROP VIEW IF EXISTS unitemporal_double_details, bitemporal_double_details;
+        DROP VIEW IF EXISTS unitemporal_bigint_details, bitemporal_bigint_details;
+        DROP VIEW IF EXISTS unitemporal_boolean_details, bitemporal_boolean_details;
+        DROP VIEW IF EXISTS unitemporal_jsonb_details, bitemporal_jsonb_details;
+    """))
 
 
 def downgrade_new_ts_tables():

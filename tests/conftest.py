@@ -6,11 +6,13 @@ test runner itself, as the runner implementation does no variables replacement a
 precedence.
 """
 import contextlib
+import datetime
 import os
 import urllib.parse
 
 import alembic.config
 import dotenv
+import pandas as pd
 import pytest
 import sqlalchemy as sql
 import sqlalchemy.exc
@@ -249,3 +251,88 @@ def mixed_dataset(basic_dp_test_set, sql_engine_data_source):
         **basic_dp_test_set,
         "dp_mea_a": dp_mea_a, "dp_mea_b": dp_mea_b, "dp_fc_a": dp_fc_a, "dp_fc_b": dp_fc_b
     }
+
+
+unitemporal_typed_test_data = [
+    dict(dp_id="loc2-dev0-pr-0-uni-dbl-0", type_name="double", time_offset=1, value=1.),
+    dict(dp_id="loc2-dev0-pr-0-uni-dbl-0", type_name="double", time_offset=2, value=2.),
+    dict(dp_id="loc2-dev0-pub-0-uni-dbl-1", type_name="double", time_offset=1, value=-3.),
+    dict(dp_id="loc2-dev0-pub-0-uni-dbl-1", type_name="double", time_offset=2, value=-4.),
+
+    dict(dp_id="loc2-dev0-pr-0-uni-int-0", type_name="bigint", time_offset=1, value=1),
+    dict(dp_id="loc2-dev0-pr-0-uni-int-0", type_name="bigint", time_offset=2, value=2),
+    dict(dp_id="loc2-dev0-pub-0-uni-int-1", type_name="bigint", time_offset=1, value=-3),
+    dict(dp_id="loc2-dev0-pub-0-uni-int-1", type_name="bigint", time_offset=2, value=-4),
+
+    dict(dp_id="loc2-dev0-pr-0-uni-bool-0", type_name="boolean", time_offset=1, value=True),
+    dict(dp_id="loc2-dev0-pr-0-uni-bool-0", type_name="boolean", time_offset=2, value=False),
+    dict(dp_id="loc2-dev0-pub-0-uni-bool-1", type_name="boolean", time_offset=1, value=False),
+    dict(dp_id="loc2-dev0-pub-0-uni-bool-1", type_name="boolean", time_offset=2, value=True),
+
+    dict(dp_id="loc2-dev0-pr-0-uni-json-0", type_name="jsonb", time_offset=1, value=dict(myval=1)),
+    dict(dp_id="loc2-dev0-pr-0-uni-json-0", type_name="jsonb", time_offset=2, value=dict(myval=2)),
+    dict(dp_id="loc2-dev0-pub-0-uni-json-1", type_name="jsonb", time_offset=1, value=dict(myval=-3)),
+    dict(dp_id="loc2-dev0-pub-0-uni-json-1", type_name="jsonb", time_offset=2, value=dict(myval=-4)),
+]
+
+bitemporal_typed_test_data = [
+    dict(dp_id="loc2-dev0-pr-0-bi-dbl-0", type_name="double", time_offset=1, value=1.),
+    dict(dp_id="loc2-dev0-pr-0-bi-dbl-0", type_name="double", time_offset=2, value=2.),
+    dict(dp_id="loc2-dev0-pub-0-bi-dbl-1", type_name="double", time_offset=1, value=-3.),
+    dict(dp_id="loc2-dev0-pub-0-bi-dbl-1", type_name="double", time_offset=2, value=-4.),
+
+    dict(dp_id="loc2-dev0-pr-0-bi-int-0", type_name="bigint", time_offset=1, value=1),
+    dict(dp_id="loc2-dev0-pr-0-bi-int-0", type_name="bigint", time_offset=2, value=2),
+    dict(dp_id="loc2-dev0-pub-0-bi-int-1", type_name="bigint", time_offset=1, value=-3),
+    dict(dp_id="loc2-dev0-pub-0-bi-int-1", type_name="bigint", time_offset=2, value=-4),
+
+    dict(dp_id="loc2-dev0-pr-0-bi-bool-0", type_name="boolean", time_offset=1, value=True),
+    dict(dp_id="loc2-dev0-pr-0-bi-bool-0", type_name="boolean", time_offset=2, value=False),
+    dict(dp_id="loc2-dev0-pub-0-bi-bool-1", type_name="boolean", time_offset=1, value=False),
+    dict(dp_id="loc2-dev0-pub-0-bi-bool-1", type_name="boolean", time_offset=2, value=True),
+
+    dict(dp_id="loc2-dev0-pr-0-bi-json-0", type_name="jsonb", time_offset=1, value=dict(myval=1)),
+    dict(dp_id="loc2-dev0-pr-0-bi-json-0", type_name="jsonb", time_offset=2, value=dict(myval=2)),
+    dict(dp_id="loc2-dev0-pub-0-bi-json-1", type_name="jsonb", time_offset=1, value=dict(myval=-3)),
+    dict(dp_id="loc2-dev0-pub-0-bi-json-1", type_name="jsonb", time_offset=2, value=dict(myval=-4)),
+]
+
+
+@pytest.fixture()
+def typed_dataset(basic_dp_test_set, sql_engine_data_source) -> dict:
+    """Defines a test set that covers all available data types"""
+
+    with sql_engine_data_source.begin() as con:
+
+        # Insert unitemporal data
+        for data in unitemporal_typed_test_data:
+            type_name = data["type_name"]
+            utc = datetime.timezone.utc
+            obs_time = datetime.datetime(2024, 1, 1, tzinfo=utc) + datetime.timedelta(hours=data["time_offset"])
+
+            con.execute(hlp.bind_params(sql.text(f"""
+                INSERT INTO raw_unitemporal_{type_name}(dp_id, obs_time, value) VALUES
+                (:dp_id, :obs_time, :value)
+            """), parameters=dict(
+                dp_id=basic_dp_test_set[data["dp_id"]],
+                obs_time=obs_time,
+                value=data["value"]
+            )))
+
+        # Insert bitemporal data
+        for data in bitemporal_typed_test_data:
+            type_name = data["type_name"]
+            utc = datetime.timezone.utc
+            obs_time = datetime.datetime(2024, 1, 2, tzinfo=utc) + datetime.timedelta(hours=data["time_offset"])
+            fc_time = datetime.datetime(2024, 1, 1, tzinfo=utc) + datetime.timedelta(hours=data["time_offset"])
+
+            con.execute(hlp.bind_params(sql.text(f"""
+                INSERT INTO raw_bitemporal_{type_name}(dp_id, obs_time, fc_time, value) VALUES
+                    (:dp_id, :obs_time, :fc_time, :value)
+            """), parameters=dict(
+                dp_id=basic_dp_test_set[data["dp_id"]],
+                obs_time=obs_time, fc_time=fc_time,
+                value=data["value"]
+            )))
+
+    return basic_dp_test_set
