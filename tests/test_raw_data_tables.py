@@ -151,3 +151,23 @@ def test_raw_bitemporal_invalid_inserts(
                         INSERT INTO {table_name}(dp_id, fc_time, obs_time, value) VALUES
                             (:dp_id, '2025-01-01T00:00:00Z', '2025-01-01T01:00:00Z', NULL);
                     """), parameters=dict(dp_id=dp_id))
+
+
+def test_hypertables_enabled(clean_db, sql_engine_postgres):
+    """Checks whether timescale is enabled on all relevant tables"""
+
+    with sql_engine_postgres.begin() as con:
+        hypertables = pd.read_sql("""
+            SELECT hypertable_name, num_dimensions, compression_enabled 
+                FROM timescaledb_information.hypertables 
+                ORDER BY hypertable_name
+        """, con)
+
+    pd.testing.assert_frame_equal(hypertables, pd.DataFrame({
+        "hypertable_name": [
+            "raw_bitemporal_bigint", "raw_bitemporal_boolean", "raw_bitemporal_double", "raw_bitemporal_jsonb",
+            "raw_unitemporal_bigint", "raw_unitemporal_boolean", "raw_unitemporal_double", "raw_unitemporal_jsonb"
+        ],
+        "num_dimensions": [1] * 8,
+        "compression_enabled": [True] * 8
+    }), check_names=False)

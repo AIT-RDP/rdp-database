@@ -119,8 +119,20 @@ def create_unitemporal_table(data_type: str):
             IS 'Stores the actual time series for type {data_type} having one observation timestamp';
     """))
 
+    op.execute(sql.text(f"""
+        SELECT create_hypertable(
+                'raw_unitemporal_{data_type_infix}', 'obs_time', 
+                chunk_time_interval=>INTERVAL '1 day'
+            );   
+        ALTER TABLE raw_unitemporal_{data_type_infix} SET (
+            timescaledb.compress=true,
+            timescaledb.compress_segmentby='dp_id',
+            timescaledb.compress_orderby='obs_time'
+        );
+        SELECT add_compression_policy('raw_unitemporal_{data_type_infix}', INTERVAL '2 days');
+    """))
+
     grant_data_table_permissions(f"raw_unitemporal_{data_type_infix}")
-    # TODO: Enable timescale on this table
 
 
 def create_bitemporal_table(data_type: str):
@@ -141,8 +153,20 @@ def create_bitemporal_table(data_type: str):
             IS 'Stores the actual time series for type {data_type} having a dedicated observation and generation time';
     """))
 
+    op.execute(sql.text(f"""
+        SELECT create_hypertable(
+                'raw_bitemporal_{data_type_infix}', 'obs_time', 
+                chunk_time_interval=>INTERVAL '1 day'
+            );   
+        ALTER TABLE raw_bitemporal_{data_type_infix} SET (
+            timescaledb.compress=true,
+            timescaledb.compress_segmentby='dp_id',
+            timescaledb.compress_orderby='obs_time, fc_time DESC'
+        );
+        SELECT add_compression_policy('raw_bitemporal_{data_type_infix}', INTERVAL '2 days');
+    """))
+
     grant_data_table_permissions(f"raw_bitemporal_{data_type_infix}")
-    # TODO: Enable timescale on this table
 
 
 def grant_data_table_permissions(table_name):
@@ -229,10 +253,15 @@ def downgrade():
 def downgrade_new_ts_tables():
     """Drops the new tables including all the contained data"""
 
+    # Cannot drop multiple hypertables at once: https://github.com/timescale/timescaledb/issues/2303
     op.execute(sql.text("""
-        DROP TABLE IF EXISTS raw_unitemporal_bigint, raw_bitemporal_bigint;
-        DROP TABLE IF EXISTS raw_unitemporal_boolean, raw_bitemporal_boolean;
-        DROP TABLE IF EXISTS raw_unitemporal_jsonb, raw_bitemporal_jsonb;
+        DROP TABLE IF EXISTS raw_unitemporal_bigint;
+        DROP TABLE IF EXISTS raw_unitemporal_boolean;
+        DROP TABLE IF EXISTS raw_unitemporal_jsonb;
+
+        DROP TABLE IF EXISTS raw_bitemporal_bigint;
+        DROP TABLE IF EXISTS raw_bitemporal_boolean;
+        DROP TABLE IF EXISTS raw_bitemporal_jsonb;
     """))
 
 
