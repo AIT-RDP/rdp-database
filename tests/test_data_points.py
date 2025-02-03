@@ -233,3 +233,57 @@ def test_invalid_temporality(clean_db, sql_engine_data_source):
                 INSERT INTO data_points(name, device_id, location_code, data_provider, view_role, temporality) VALUES
                     ('name_0', 'device_0', 'nowhere special', 'crystal ball', 'view_internal', 'qbit');
             """))
+
+
+@pytest.mark.parametrize("type_name", [
+    "bigint", "boolean", "jsonb"
+])
+def test_missing_temporality_insert(clean_db, sql_engine_data_source: sqlalchemy.Engine, type_name):
+    """Tests whether inserting a spurious data point fails"""
+
+    with sql_engine_data_source.begin() as con:
+        with pytest.raises(sqlalchemy.exc.IntegrityError, match=".*check_temporality.*"):
+            con.execute(sql.text("""
+                    INSERT INTO data_points(name, device_id, location_code, data_provider, data_type, temporality) VALUES
+                        ('name_0', 'device_0', 'nowhere special', 'crystal ball', :type_name, NULL);
+            """), parameters=dict(type_name=type_name))
+
+
+@pytest.mark.parametrize("type_name", [
+    "bigint", "boolean", "jsonb"
+])
+def test_missing_temporality_side_update(clean_db, sql_engine_data_source: sqlalchemy.Engine, type_name):
+    """Tests whether inserting a spurious data point fails"""
+
+    with sql_engine_data_source.begin() as con:
+        con.execute(sql.text("""
+                INSERT INTO data_points(name, device_id, location_code, data_provider, data_type, temporality) VALUES
+                    ('name_0', 'device_0', 'nowhere special', 'crystal ball', 'double', NULL);
+        """))
+
+        with pytest.raises(sqlalchemy.exc.IntegrityError, match=".*check_temporality.*"):
+            con.execute(sql.text("""
+                    UPDATE data_points SET data_type=:type_name 
+                    WHERE name='name_0' AND device_id='device_0' AND location_code='nowhere special' AND 
+                        data_provider='crystal ball';
+            """), parameters=dict(type_name=type_name))
+
+
+@pytest.mark.parametrize("type_name", [
+    "bigint", "boolean", "jsonb"
+])
+def test_missing_temporality_direct_update(clean_db, sql_engine_data_source: sqlalchemy.Engine, type_name):
+    """Tests whether inserting a spurious data point fails"""
+
+    with sql_engine_data_source.begin() as con:
+        con.execute(sql.text("""
+                INSERT INTO data_points(name, device_id, location_code, data_provider, data_type, temporality) VALUES
+                    ('name_0', 'device_0', 'nowhere special', 'crystal ball', :type_name, 'unitemporal');
+        """), parameters=dict(type_name=type_name))
+
+        with pytest.raises(sqlalchemy.exc.IntegrityError, match=".*check_temporality.*"):
+            con.execute(sql.text("""
+                    UPDATE data_points SET temporality=NULL 
+                    WHERE name='name_0' AND device_id='device_0' AND location_code='nowhere special' AND 
+                        data_provider='crystal ball';
+            """))

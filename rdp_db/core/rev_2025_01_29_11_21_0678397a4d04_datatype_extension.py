@@ -83,6 +83,11 @@ def upgrade_type_system():
         ALTER TABLE data_points ADD COLUMN temporality time_series_temporality DEFAULT NULL;
     """))
 
+    op.execute(sql.text("""
+        -- Make sure only the legacy double type can omit the temporality
+        ALTER TABLE data_points ADD CONSTRAINT check_temporality CHECK (data_type='double' OR temporality IS NOT NULL); 
+    """))
+
 
 def upgrade_new_ts_tables():
     """Creates the new time-series tables for various data types"""
@@ -214,8 +219,9 @@ def add_type_check(table_name, data_type, temporality):
 def downgrade():
     """Reverts the changes of this revision"""
 
-    downgrade_type_system()
     downgrade_new_ts_tables()
+    downgrade_type_checks()
+    downgrade_type_system()
     downgrade_legacy_views()
     downgrade_move_data()
 
@@ -254,6 +260,7 @@ def downgrade_type_system():
     """Downgrades the type system protecting the time series"""
 
     op.execute(sql.text("""
+        ALTER TABLE data_points DROP CONSTRAINT check_temporality;
         ALTER TABLE data_points DROP COLUMN temporality;
         ALTER TABLE data_points DROP COLUMN data_type;
     

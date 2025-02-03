@@ -151,6 +151,3 @@ def test_raw_bitemporal_invalid_inserts(
                         INSERT INTO {table_name}(dp_id, fc_time, obs_time, value) VALUES
                             (:dp_id, '2025-01-01T00:00:00Z', '2025-01-01T01:00:00Z', NULL);
                     """), parameters=dict(dp_id=dp_id))
-
-
-# TODO: Test non-legacy series with NULL temporality -> should fail
