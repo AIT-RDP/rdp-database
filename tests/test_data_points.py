@@ -287,3 +287,38 @@ def test_missing_temporality_direct_update(clean_db, sql_engine_data_source: sql
                     WHERE name='name_0' AND device_id='device_0' AND location_code='nowhere special' AND 
                         data_provider='crystal ball';
             """))
+
+
+def test_data_point_access(clean_db, sql_engine_data_source: sqlalchemy.Engine):
+    """Tests the get_or_create_data_point function using various access patterns"""
+
+    with sql_engine_data_source.begin() as con:
+        # Insert the original data point
+        res_orig = con.execute(sql.text("""
+            SELECT get_or_create_data_point_id(
+                    'test_dp', 'test_device', 'here', 'intuition', NULL, '{}'::jsonb, 'bigint', 'bitemporal' 
+                ) AS dp_id;
+        """))
+        res_orig = res_orig.mappings().fetchall()
+
+        assert len(res_orig) == 1
+        assert "dp_id" in res_orig[0]
+
+        # Call the function with a duplicate one
+        res_dup = con.execute(sql.text("""
+            SELECT get_or_create_data_point_id(
+                    'test_dp', 'test_device', 'here', 'intuition' 
+                ) AS dp_id;
+        """))
+        res_dup = res_dup.mappings().fetchall()
+        assert res_orig == res_dup
+
+        # Actually check the parameters
+        check_res = con.execute(sql.text("""
+            SELECT * FROM data_points WHERE id = :dp_id;
+        """), parameters=dict(dp_id=res_orig[0]["dp_id"]))
+        check_res = check_res.mappings().fetchall()
+
+        assert len(check_res) == 1
+        assert check_res[0]["data_type"] == "bigint"
+        assert check_res[0]["temporality"] == "bitemporal"

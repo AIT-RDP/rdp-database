@@ -14,6 +14,7 @@ import os
 
 from alembic import op
 import sqlalchemy as sql
+import rdp_db.core.rev_2024_02_01_09_25_b158d45bc708_add_initial_metadata_on_data_point_ as rev_metadata
 
 # revision identifiers, used by Alembic.
 revision = '0678397a4d04'
@@ -30,8 +31,8 @@ def upgrade():
     upgrade_type_system()
     upgrade_new_ts_tables()
     upgrade_type_checks()
-
     upgrade_data_views()
+    upgrade_data_point_access_function()
 
 
 def upgrade_move_data():
@@ -336,14 +337,96 @@ def append_typed_bitemporal_details_view(type_name: str, null_temporality: bool)
     """))
 
 
+def upgrade_data_point_access_function():
+    """Upgrade the data point creation function to consider temporality and data types as well"""
+
+    op.execute(sql.text("""
+        DROP FUNCTION get_or_create_data_point_id(
+                VARCHAR, VARCHAR, VARCHAR, VARCHAR, TEXT, JSONB
+            ); -- Avoid duplication 
+    """))
+    create_data_point_access_function()
+
+
+def create_data_point_access_function():
+    """
+    Creates the actual data point access function.
+
+    The creation routine may be useful for future downgrades as well
+    """
+
+    op.execute(sql.text(f"""
+        CREATE OR REPLACE FUNCTION get_or_create_data_point_id(
+                name VARCHAR(128),
+                device_id VARCHAR(128),
+                location_code VARCHAR(128),
+                data_provider VARCHAR(128),
+                initial_unit TEXT DEFAULT NULL,
+                initial_metadata JSONB DEFAULT '{{}}'::jsonb,
+                initial_data_type time_series_data_type DEFAULT 'double',
+                initial_temporality time_Series_temporality DEFAULT NULL
+            ) RETURNS INTEGER AS $$
+        DECLARE
+                dp_id INTEGER;
+        BEGIN
+            SELECT id FROM data_points
+                WHERE data_points.name = get_or_create_data_point_id.name AND
+                    ((data_points.device_id IS NULL AND get_or_create_data_point_id.device_id IS NULL) OR 
+                     (data_points.device_id = get_or_create_data_point_id.device_id)) AND
+                    data_points.location_code = get_or_create_data_point_id.location_code AND
+                    data_points.data_provider = get_or_create_data_point_id.data_provider
+                INTO dp_id;
+            IF NOT FOUND THEN
+                INSERT INTO data_points(
+                        name, device_id, location_code, data_provider, unit, metadata, 
+                        data_type, temporality
+                    ) VALUES (
+                        get_or_create_data_point_id.name,
+                        get_or_create_data_point_id.device_id,
+                        get_or_create_data_point_id.location_code,
+                        get_or_create_data_point_id.data_provider,
+                        get_or_create_data_point_id.initial_unit,
+                        get_or_create_data_point_id.initial_metadata,
+                        get_or_create_data_point_id.initial_data_type,
+                        get_or_create_data_point_id.initial_temporality
+                    ) RETURNING data_points.id INTO dp_id;
+            END IF;
+            RETURN dp_id;
+    END;
+        $$ LANGUAGE plpgsql;
+        
+        GRANT EXECUTE ON FUNCTION public.get_or_create_data_point_id(
+                VARCHAR, VARCHAR, VARCHAR, VARCHAR, TEXT, JSONB, time_series_data_type, time_series_temporality
+            ) TO data_source_base;
+        
+        COMMENT ON FUNCTION public.get_or_create_data_point_id(
+                VARCHAR, VARCHAR, VARCHAR, VARCHAR, TEXT, JSONB, time_series_data_type, time_series_temporality
+            ) IS 
+            'Returns the datapoint id having the specified name, device_id, location_code, and data_provider. In 
+             case non exist a data point will be created. The initial_unit and initial_metadata will only be used
+             when creating the data point. No update will be performed.';
+    """))
+
+
 def downgrade():
     """Reverts the changes of this revision"""
+    downgrade_data_point_access_function()
     downgrade_data_views()
     downgrade_new_ts_tables()
     downgrade_type_checks()
     downgrade_type_system()
     downgrade_legacy_views()
     downgrade_move_data()
+
+
+def downgrade_data_point_access_function():
+    """Installs the data point creation function from the previous release"""
+    op.execute(sql.text("""
+        DROP FUNCTION IF EXISTS get_or_create_data_point_id(
+                VARCHAR, VARCHAR, VARCHAR, VARCHAR, TEXT, JSONB, time_series_data_type, time_series_temporality
+            );
+    """))
+    rev_metadata.create_data_point_access_function()
 
 
 def downgrade_data_views():
