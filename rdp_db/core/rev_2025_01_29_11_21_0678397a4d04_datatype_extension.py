@@ -42,12 +42,17 @@ def upgrade_move_data():
 
     op.execute(sql.text(f"""
         ALTER TABLE measurements RENAME TO raw_unitemporal_double;
+        ALTER TABLE raw_unitemporal_double RENAME COLUMN obs_time TO valid_time;
+        
         -- No more direct data access for the visualization user. Use the guarded views instead.
         REVOKE ALL PRIVILEGES ON TABLE raw_unitemporal_double FROM {data_vis_user}, {data_source_user}; 
     """))
 
     op.execute(sql.text(f"""
         ALTER TABLE forecasts RENAME TO raw_bitemporal_double;
+        ALTER TABLE raw_bitemporal_double RENAME COLUMN obs_time TO valid_time;
+        ALTER TABLE raw_bitemporal_double RENAME COLUMN fc_time TO transaction_time;
+        
         -- No more direct data access for the visualization user. Use the guarded views instead.
         REVOKE ALL PRIVILEGES ON TABLE raw_bitemporal_double FROM {data_vis_user}, {data_source_user}; 
     """))
@@ -60,13 +65,15 @@ def upgrade_create_legacy_views():
     data_source_user = os.environ['POSTGRES_DATA_SOURCE_USER']
 
     op.execute(sql.text(f"""
-        CREATE VIEW measurements AS SELECT * FROM raw_unitemporal_double;
+        CREATE VIEW measurements AS SELECT dp_id, valid_time AS obs_time, value FROM raw_unitemporal_double;
         GRANT SELECT, INSERT, UPDATE ON measurements TO data_source_base, {data_source_user};
         GRANT SELECT ON measurements TO restricting_view_executor, {data_vis_user}; 
     """))
 
     op.execute(sql.text(f"""
-        CREATE VIEW forecasts AS SELECT * FROM raw_bitemporal_double;
+        CREATE VIEW forecasts AS 
+            SELECT dp_id, valid_time AS obs_time, transaction_time AS fc_time, value 
+                FROM raw_bitemporal_double;
         GRANT SELECT, INSERT, UPDATE ON forecasts TO data_source_base, {data_source_user};
         GRANT SELECT ON forecasts TO restricting_view_executor, {data_vis_user}; 
     """))
@@ -112,24 +119,30 @@ def create_unitemporal_table(data_type: str):
     op.execute(sql.text(f"""
         CREATE TABLE raw_unitemporal_{data_type_infix} (
             dp_id INTEGER NOT NULL,
-            obs_time TIMESTAMPTZ NOT NULL,
+            valid_time TIMESTAMPTZ NOT NULL,
             value {data_type} NULL,
-            PRIMARY KEY (dp_id, obs_time),
+            PRIMARY KEY (dp_id, valid_time),
             FOREIGN KEY (dp_id) REFERENCES data_points(id)
         );
         COMMENT ON TABLE raw_unitemporal_{data_type_infix} 
             IS 'Stores the actual time series for type {data_type} having one observation timestamp';
+        COMMENT ON COLUMN raw_unitemporal_{data_type_infix}.dp_id
+            IS 'Reference to the data_points entry that holds all the details on the time series';
+        COMMENT ON COLUMN raw_unitemporal_{data_type_infix}.valid_time
+            IS 'The (start) time for which the stored value is valid. E.g., the time at which the observation was made';
+        COMMENT ON COLUMN raw_unitemporal_{data_type_infix}.value
+            IS 'The actual payload at the particular instant of time';
     """))
 
     op.execute(sql.text(f"""
         SELECT create_hypertable(
-                'raw_unitemporal_{data_type_infix}', 'obs_time', 
+                'raw_unitemporal_{data_type_infix}', 'valid_time', 
                 chunk_time_interval=>INTERVAL '1 day'
             );   
         ALTER TABLE raw_unitemporal_{data_type_infix} SET (
             timescaledb.compress=true,
             timescaledb.compress_segmentby='dp_id',
-            timescaledb.compress_orderby='obs_time'
+            timescaledb.compress_orderby='valid_time'
         );
         SELECT add_compression_policy('raw_unitemporal_{data_type_infix}', INTERVAL '2 days');
     """))
@@ -145,25 +158,34 @@ def create_bitemporal_table(data_type: str):
     op.execute(sql.text(f"""
         CREATE TABLE raw_bitemporal_{data_type_infix} (
             dp_id INTEGER NOT NULL,
-            obs_time TIMESTAMPTZ NOT NULL,
-            fc_time TIMESTAMPTZ NOT NULL,
+            valid_time TIMESTAMPTZ NOT NULL,
+            transaction_time TIMESTAMPTZ NOT NULL,
             value {data_type} NULL,
-            PRIMARY KEY (dp_id, obs_time, fc_time),
+            PRIMARY KEY (dp_id, valid_time, transaction_time),
             FOREIGN KEY (dp_id) REFERENCES data_points(id)
         );
-        COMMENT ON TABLE raw_unitemporal_{data_type_infix} 
+        COMMENT ON TABLE raw_bitemporal_{data_type_infix} 
             IS 'Stores the actual time series for type {data_type} having a dedicated observation and generation time';
+        COMMENT ON COLUMN raw_bitemporal_{data_type_infix}.dp_id
+            IS 'Reference to the data_points entry that holds all the details on the time series';
+        COMMENT ON COLUMN raw_bitemporal_{data_type_infix}.valid_time
+            IS 'The (start) time for which the stored value is valid. E.g., the time at which the observation was made';
+        COMMENT ON COLUMN raw_bitemporal_{data_type_infix}.transaction_time
+            IS 'The time at which the stored value was created or entered (e.g., the time a forecast was calculated)';
+        COMMENT ON COLUMN raw_bitemporal_{data_type_infix}.value
+            IS 'The actual payload for the particular instant of valid time, as created at the transaction time';
+
     """))
 
     op.execute(sql.text(f"""
         SELECT create_hypertable(
-                'raw_bitemporal_{data_type_infix}', 'obs_time', 
+                'raw_bitemporal_{data_type_infix}', 'valid_time', 
                 chunk_time_interval=>INTERVAL '1 day'
             );   
         ALTER TABLE raw_bitemporal_{data_type_infix} SET (
             timescaledb.compress=true,
             timescaledb.compress_segmentby='dp_id',
-            timescaledb.compress_orderby='obs_time, fc_time DESC'
+            timescaledb.compress_orderby='valid_time, transaction_time DESC'
         );
         SELECT add_compression_policy('raw_bitemporal_{data_type_infix}', INTERVAL '2 days');
     """))
@@ -266,10 +288,10 @@ def append_typed_unitemporal_details_view(type_name: str, null_temporality: bool
 
     op.execute(sql.text(f"""
         CREATE OR REPLACE VIEW unitemporal_{type_name}_details(
-            dp_id, obs_time, value, name, device_id, location_code, data_provider, unit, view_role, metadata, 
+            dp_id, valid_time, value, name, device_id, location_code, data_provider, unit, view_role, metadata, 
             data_type, temporality
         ) AS 
-        SELECT dp.id, obs_time, value, dp.name, dp.device_id, dp.location_code, dp.data_provider, dp.unit,
+        SELECT dp.id, valid_time, value, dp.name, dp.device_id, dp.location_code, dp.data_provider, dp.unit,
                 dp.view_role, dp.metadata, dp.data_type, dp.temporality
             FROM raw_unitemporal_{type_name} AS raw
             JOIN data_points AS dp
@@ -295,11 +317,11 @@ def append_typed_bitemporal_details_view(type_name: str, null_temporality: bool)
 
     op.execute(sql.text(f"""
         CREATE OR REPLACE VIEW bitemporal_{type_name}_details(
-            dp_id, obs_time, fc_time, value, name, device_id, location_code, data_provider, unit, view_role, metadata, 
-            data_type, temporality
+            dp_id, valid_time, transaction_time, value, name, device_id, location_code, data_provider, unit, view_role,
+            metadata, data_type, temporality
         ) AS 
-        SELECT dp.id, obs_time, fc_time, value, dp.name, dp.device_id, dp.location_code, dp.data_provider, dp.unit,
-                dp.view_role, dp.metadata, dp.data_type, dp.temporality
+        SELECT dp.id, valid_time, transaction_time, value, dp.name, dp.device_id, dp.location_code, dp.data_provider, 
+                dp.unit, dp.view_role, dp.metadata, dp.data_type, dp.temporality
             FROM raw_bitemporal_{type_name} AS raw
             JOIN data_points AS dp
                 ON (raw.dp_id = dp.id)
@@ -401,11 +423,14 @@ def downgrade_move_data():
     op.execute(sql.text(f"""
         GRANT SELECT ON TABLE raw_bitemporal_double TO {data_vis_user};
         GRANT SELECT, UPDATE, INSERT ON TABLE raw_bitemporal_double TO {data_source_user};
+        ALTER TABLE raw_bitemporal_double RENAME COLUMN valid_time TO obs_time;
+        ALTER TABLE raw_bitemporal_double RENAME COLUMN transaction_time TO fc_time;
         ALTER TABLE raw_bitemporal_double RENAME TO forecasts;
     """))
 
     op.execute(sql.text(f"""
         GRANT SELECT ON TABLE raw_unitemporal_double TO {data_vis_user};
         GRANT SELECT, UPDATE, INSERT ON TABLE raw_unitemporal_double TO {data_source_user};
+        ALTER TABLE raw_unitemporal_double RENAME COLUMN valid_time TO obs_time;
         ALTER TABLE raw_unitemporal_double RENAME TO measurements;
     """))

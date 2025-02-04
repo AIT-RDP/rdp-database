@@ -30,7 +30,7 @@ def test_raw_unitemporal_access(
 
     with sql_engine_data_source.begin() as con:
         con.execute(sql.text(f"""
-            INSERT INTO {table_name}(dp_id, obs_time, value) VALUES
+            INSERT INTO {table_name}(dp_id, valid_time, value) VALUES
                 (:dp_id_a, '2025-01-01T00:00:00Z', :value_a),
                 (:dp_id_b, '2025-01-01T12:00:00Z', :value_b)
         """).bindparams(
@@ -40,12 +40,12 @@ def test_raw_unitemporal_access(
         ))
 
         data = pd.read_sql(f"""
-            SELECT dp_id, obs_time, value FROM {table_name} ORDER BY dp_id, obs_time;
+            SELECT dp_id, valid_time, value FROM {table_name} ORDER BY dp_id, valid_time;
         """, con)
 
         pd.testing.assert_frame_equal(data, pd.DataFrame({
             "dp_id": [dp_id_a, dp_id_b],
-            "obs_time": pd.to_datetime(["2025-01-01T00:00:00Z", "2025-01-01T12:00:00Z"]),
+            "valid_time": pd.to_datetime(["2025-01-01T00:00:00Z", "2025-01-01T12:00:00Z"]),
             "value": [value_a, value_b]
         }), check_names=False)
 
@@ -70,7 +70,7 @@ def test_raw_bitemporal_access(
 
     with sql_engine_data_source.begin() as con:
         con.execute(sql.text(f"""
-            INSERT INTO {table_name}(dp_id, fc_time, obs_time, value) VALUES
+            INSERT INTO {table_name}(dp_id, transaction_time, valid_time, value) VALUES
                 (:dp_id_a, '2024-01-01T00:00:00Z', '2025-01-01T00:00:00Z', :value_a),
                 (:dp_id_b, '2024-01-01T00:00:00Z', '2025-01-01T12:00:00Z', :value_b)
         """).bindparams(
@@ -80,13 +80,14 @@ def test_raw_bitemporal_access(
         ))
 
         data = pd.read_sql(f"""
-            SELECT dp_id, fc_time, obs_time, value FROM {table_name} ORDER BY dp_id, fc_time, obs_time;
+            SELECT dp_id, transaction_time, valid_time, value FROM {table_name} 
+                ORDER BY dp_id, transaction_time, valid_time;
         """, con)
 
         pd.testing.assert_frame_equal(data, pd.DataFrame({
             "dp_id": [dp_id_a, dp_id_b],
-            "fc_time": pd.to_datetime(["2024-01-01T00:00:00Z", "2024-01-01T00:00:00Z"]),
-            "obs_time": pd.to_datetime(["2025-01-01T00:00:00Z", "2025-01-01T12:00:00Z"]),
+            "transaction_time": pd.to_datetime(["2024-01-01T00:00:00Z", "2024-01-01T00:00:00Z"]),
+            "valid_time": pd.to_datetime(["2025-01-01T00:00:00Z", "2025-01-01T12:00:00Z"]),
             "value": [value_a, value_b]
         }), check_names=False)
 
@@ -108,7 +109,7 @@ def test_raw_unitemporal_invalid_inserts(
     with pytest.raises(sqlalchemy.exc.InternalError, match=".*Invalid temporality.*"):
         with sql_engine_data_source.begin() as con:
             con.execute(sql.text(f"""
-                        INSERT INTO {table_name}(dp_id, obs_time, value) VALUES
+                        INSERT INTO {table_name}(dp_id, valid_time, value) VALUES
                             (:dp_id, '2025-01-01T01:00:00Z', NULL);
                     """), parameters=dict(dp_id=dp_id))
 
@@ -117,7 +118,7 @@ def test_raw_unitemporal_invalid_inserts(
     with pytest.raises(sqlalchemy.exc.InternalError, match=".*Invalid data type.*"):
         with sql_engine_data_source.begin() as con:
             con.execute(sql.text(f"""
-                        INSERT INTO {table_name}(dp_id, obs_time, value) VALUES
+                        INSERT INTO {table_name}(dp_id, valid_time, value) VALUES
                             (:dp_id, '2025-01-01T01:00:00Z', NULL);
                     """), parameters=dict(dp_id=dp_id))
 
@@ -139,7 +140,7 @@ def test_raw_bitemporal_invalid_inserts(
     with pytest.raises(sqlalchemy.exc.InternalError, match=".*Invalid temporality.*"):
         with sql_engine_data_source.begin() as con:
             con.execute(sql.text(f"""
-                        INSERT INTO {table_name}(dp_id, fc_time, obs_time, value) VALUES
+                        INSERT INTO {table_name}(dp_id, transaction_time, valid_time, value) VALUES
                             (:dp_id, '2025-01-01T00:00:00Z', '2025-01-01T01:00:00Z', NULL);
                     """), parameters=dict(dp_id=dp_id))
 
@@ -148,7 +149,7 @@ def test_raw_bitemporal_invalid_inserts(
     with pytest.raises(sqlalchemy.exc.InternalError, match=".*Invalid data type.*"):
         with sql_engine_data_source.begin() as con:
             con.execute(sql.text(f"""
-                        INSERT INTO {table_name}(dp_id, fc_time, obs_time, value) VALUES
+                        INSERT INTO {table_name}(dp_id, transaction_time, valid_time, value) VALUES
                             (:dp_id, '2025-01-01T00:00:00Z', '2025-01-01T01:00:00Z', NULL);
                     """), parameters=dict(dp_id=dp_id))
 

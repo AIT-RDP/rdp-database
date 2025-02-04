@@ -13,7 +13,7 @@ def test_unitemporal_double_public(typed_dataset, sql_engine_public_vis):
     data = _get_unitemporal_data(sql_engine_public_vis, "double")
     pd.testing.assert_frame_equal(data, pd.DataFrame({
         "dp_id": [typed_dataset["loc2-dev0-pub-0-uni-dbl-1"]] * 2,
-        "obs_time": pd.to_datetime(["2024-01-01T01:00:00Z", "2024-01-01T02:00:00Z"]),
+        "valid_time": pd.to_datetime(["2024-01-01T01:00:00Z", "2024-01-01T02:00:00Z"]),
         "value": [-3., -4.],
         "name": ["name_1"] * 2,
         "device_id": ["device_0"] * 2,
@@ -33,7 +33,7 @@ def test_unitemporal_double_private(typed_dataset, sql_engine_private_vis):
     data = _get_unitemporal_data(sql_engine_private_vis, "double")
     pd.testing.assert_frame_equal(data, pd.DataFrame({
         "dp_id": [typed_dataset["loc2-dev0-pr-0-uni-dbl-0"]] * 2 + [typed_dataset["loc2-dev0-pub-0-uni-dbl-1"]] * 2,
-        "obs_time": pd.to_datetime([
+        "valid_time": pd.to_datetime([
             "2024-01-01T01:00:00Z", "2024-01-01T02:00:00Z",
             "2024-01-01T01:00:00Z", "2024-01-01T02:00:00Z"
         ]),
@@ -56,7 +56,7 @@ def test_unitemporal_bigint_public(typed_dataset, sql_engine_public_vis):
     data = _get_unitemporal_data(sql_engine_public_vis, "bigint")
     pd.testing.assert_frame_equal(data, pd.DataFrame({
         "dp_id": [typed_dataset["loc2-dev0-pub-0-uni-int-1"]] * 2,
-        "obs_time": pd.to_datetime(["2024-01-01T01:00:00Z", "2024-01-01T02:00:00Z"]),
+        "valid_time": pd.to_datetime(["2024-01-01T01:00:00Z", "2024-01-01T02:00:00Z"]),
         "value": [-3, -4],
         "name": ["name_1"] * 2,
         "device_id": ["device_0"] * 2,
@@ -76,7 +76,7 @@ def test_unitemporal_bigint_private(typed_dataset, sql_engine_private_vis):
     data = _get_unitemporal_data(sql_engine_private_vis, "bigint")
     pd.testing.assert_frame_equal(data, pd.DataFrame({
         "dp_id": [typed_dataset["loc2-dev0-pr-0-uni-int-0"]] * 2 + [typed_dataset["loc2-dev0-pub-0-uni-int-1"]] * 2,
-        "obs_time": pd.to_datetime([
+        "valid_time": pd.to_datetime([
             "2024-01-01T01:00:00Z", "2024-01-01T02:00:00Z",
             "2024-01-01T01:00:00Z", "2024-01-01T02:00:00Z"
         ]),
@@ -99,7 +99,7 @@ def test_unitemporal_boolean_public(typed_dataset, sql_engine_public_vis):
     data = _get_unitemporal_data(sql_engine_public_vis, "boolean")
     pd.testing.assert_frame_equal(data, pd.DataFrame({
         "dp_id": [typed_dataset["loc2-dev0-pub-0-uni-bool-1"]] * 2,
-        "obs_time": pd.to_datetime(["2024-01-01T01:00:00Z", "2024-01-01T02:00:00Z"]),
+        "valid_time": pd.to_datetime(["2024-01-01T01:00:00Z", "2024-01-01T02:00:00Z"]),
         "value": [False, True],
         "name": ["name_1"] * 2,
         "device_id": ["device_0"] * 2,
@@ -119,7 +119,7 @@ def test_unitemporal_boolean_private(typed_dataset, sql_engine_private_vis):
     data = _get_unitemporal_data(sql_engine_private_vis, "boolean")
     pd.testing.assert_frame_equal(data, pd.DataFrame({
         "dp_id": [typed_dataset["loc2-dev0-pr-0-uni-bool-0"]] * 2 + [typed_dataset["loc2-dev0-pub-0-uni-bool-1"]] * 2,
-        "obs_time": pd.to_datetime([
+        "valid_time": pd.to_datetime([
             "2024-01-01T01:00:00Z", "2024-01-01T02:00:00Z",
             "2024-01-01T01:00:00Z", "2024-01-01T02:00:00Z"
         ]),
@@ -142,7 +142,7 @@ def test_unitemporal_jsonb_public(typed_dataset, sql_engine_public_vis):
     data = _get_unitemporal_data(sql_engine_public_vis, "jsonb")
     pd.testing.assert_frame_equal(data, pd.DataFrame({
         "dp_id": [typed_dataset["loc2-dev0-pub-0-uni-json-1"]] * 2,
-        "obs_time": pd.to_datetime(["2024-01-01T01:00:00Z", "2024-01-01T02:00:00Z"]),
+        "valid_time": pd.to_datetime(["2024-01-01T01:00:00Z", "2024-01-01T02:00:00Z"]),
         "value": [{"myval": -3}, {"myval": -4}],
         "name": ["name_1"] * 2,
         "device_id": ["device_0"] * 2,
@@ -162,7 +162,7 @@ def test_unitemporal_jsonb_private(typed_dataset, sql_engine_private_vis):
     data = _get_unitemporal_data(sql_engine_private_vis, "jsonb")
     pd.testing.assert_frame_equal(data, pd.DataFrame({
         "dp_id": [typed_dataset["loc2-dev0-pr-0-uni-json-0"]] * 2 + [typed_dataset["loc2-dev0-pub-0-uni-json-1"]] * 2,
-        "obs_time": pd.to_datetime([
+        "valid_time": pd.to_datetime([
             "2024-01-01T01:00:00Z", "2024-01-01T02:00:00Z",
             "2024-01-01T01:00:00Z", "2024-01-01T02:00:00Z"
         ]),
@@ -184,10 +184,10 @@ def _get_unitemporal_data(engine: sqlalchemy.engine.Engine, type_name: str) -> p
 
     with engine.begin() as con:
         return pd.read_sql(f"""
-            SELECT dp_id, obs_time, value, name, device_id, location_code, data_provider, unit, view_role, metadata, 
+            SELECT dp_id, valid_time, value, name, device_id, location_code, data_provider, unit, view_role, metadata, 
                     data_type, temporality
                 FROM unitemporal_{type_name}_details
-                ORDER BY dp_id, obs_time;
+                ORDER BY dp_id, valid_time;
         """, con)
 
 
@@ -197,10 +197,10 @@ def test_bitemporal_double_public(typed_dataset, sql_engine_public_vis):
     data = _get_bitemporal_data(sql_engine_public_vis, "double")
     pd.testing.assert_frame_equal(data, pd.DataFrame({
         "dp_id": [typed_dataset["loc2-dev0-pub-0-bi-dbl-1"]] * 2,
-        "fc_time": pd.to_datetime([
+        "transaction_time": pd.to_datetime([
             "2024-01-01T01:00:00Z", "2024-01-01T02:00:00Z"
         ]),
-        "obs_time": pd.to_datetime([
+        "valid_time": pd.to_datetime([
             "2024-01-02T01:00:00Z", "2024-01-02T02:00:00Z"
         ]),
         "value": [-3., -4.],
@@ -222,11 +222,11 @@ def test_bitemporal_double_private(typed_dataset, sql_engine_private_vis):
     data = _get_bitemporal_data(sql_engine_private_vis, "double")
     pd.testing.assert_frame_equal(data, pd.DataFrame({
         "dp_id": [typed_dataset["loc2-dev0-pr-0-bi-dbl-0"]] * 2 + [typed_dataset["loc2-dev0-pub-0-bi-dbl-1"]] * 2,
-        "fc_time": pd.to_datetime([
+        "transaction_time": pd.to_datetime([
             "2024-01-01T01:00:00Z", "2024-01-01T02:00:00Z",
             "2024-01-01T01:00:00Z", "2024-01-01T02:00:00Z"
         ]),
-        "obs_time": pd.to_datetime([
+        "valid_time": pd.to_datetime([
             "2024-01-02T01:00:00Z", "2024-01-02T02:00:00Z",
             "2024-01-02T01:00:00Z", "2024-01-02T02:00:00Z"
         ]),
@@ -249,10 +249,10 @@ def test_bitemporal_bigint_public(typed_dataset, sql_engine_public_vis):
     data = _get_bitemporal_data(sql_engine_public_vis, "bigint")
     pd.testing.assert_frame_equal(data, pd.DataFrame({
         "dp_id": [typed_dataset["loc2-dev0-pub-0-bi-int-1"]] * 2,
-        "fc_time": pd.to_datetime([
+        "transaction_time": pd.to_datetime([
             "2024-01-01T01:00:00Z", "2024-01-01T02:00:00Z"
         ]),
-        "obs_time": pd.to_datetime([
+        "valid_time": pd.to_datetime([
             "2024-01-02T01:00:00Z", "2024-01-02T02:00:00Z"
         ]),
         "value": [-3, -4],
@@ -274,11 +274,11 @@ def test_bitemporal_bigint_private(typed_dataset, sql_engine_private_vis):
     data = _get_bitemporal_data(sql_engine_private_vis, "bigint")
     pd.testing.assert_frame_equal(data, pd.DataFrame({
         "dp_id": [typed_dataset["loc2-dev0-pr-0-bi-int-0"]] * 2 + [typed_dataset["loc2-dev0-pub-0-bi-int-1"]] * 2,
-        "fc_time": pd.to_datetime([
+        "transaction_time": pd.to_datetime([
             "2024-01-01T01:00:00Z", "2024-01-01T02:00:00Z",
             "2024-01-01T01:00:00Z", "2024-01-01T02:00:00Z"
         ]),
-        "obs_time": pd.to_datetime([
+        "valid_time": pd.to_datetime([
             "2024-01-02T01:00:00Z", "2024-01-02T02:00:00Z",
             "2024-01-02T01:00:00Z", "2024-01-02T02:00:00Z"
         ]),
@@ -301,10 +301,10 @@ def test_bitemporal_boolean_public(typed_dataset, sql_engine_public_vis):
     data = _get_bitemporal_data(sql_engine_public_vis, "boolean")
     pd.testing.assert_frame_equal(data, pd.DataFrame({
         "dp_id": [typed_dataset["loc2-dev0-pub-0-bi-bool-1"]] * 2,
-        "fc_time": pd.to_datetime([
+        "transaction_time": pd.to_datetime([
             "2024-01-01T01:00:00Z", "2024-01-01T02:00:00Z"
         ]),
-        "obs_time": pd.to_datetime([
+        "valid_time": pd.to_datetime([
             "2024-01-02T01:00:00Z", "2024-01-02T02:00:00Z"
         ]),
         "value": [False, True],
@@ -326,11 +326,11 @@ def test_bitemporal_boolean_private(typed_dataset, sql_engine_private_vis):
     data = _get_bitemporal_data(sql_engine_private_vis, "boolean")
     pd.testing.assert_frame_equal(data, pd.DataFrame({
         "dp_id": [typed_dataset["loc2-dev0-pr-0-bi-bool-0"]] * 2 + [typed_dataset["loc2-dev0-pub-0-bi-bool-1"]] * 2,
-        "fc_time": pd.to_datetime([
+        "transaction_time": pd.to_datetime([
             "2024-01-01T01:00:00Z", "2024-01-01T02:00:00Z",
             "2024-01-01T01:00:00Z", "2024-01-01T02:00:00Z"
         ]),
-        "obs_time": pd.to_datetime([
+        "valid_time": pd.to_datetime([
             "2024-01-02T01:00:00Z", "2024-01-02T02:00:00Z",
             "2024-01-02T01:00:00Z", "2024-01-02T02:00:00Z"
         ]),
@@ -353,10 +353,10 @@ def test_bitemporal_jsonb_public(typed_dataset, sql_engine_public_vis):
     data = _get_bitemporal_data(sql_engine_public_vis, "jsonb")
     pd.testing.assert_frame_equal(data, pd.DataFrame({
         "dp_id": [typed_dataset["loc2-dev0-pub-0-bi-json-1"]] * 2,
-        "fc_time": pd.to_datetime([
+        "transaction_time": pd.to_datetime([
             "2024-01-01T01:00:00Z", "2024-01-01T02:00:00Z"
         ]),
-        "obs_time": pd.to_datetime([
+        "valid_time": pd.to_datetime([
             "2024-01-02T01:00:00Z", "2024-01-02T02:00:00Z"
         ]),
         "value": [{"myval": -3}, {"myval": -4}],
@@ -378,11 +378,11 @@ def test_bitemporal_jsonb_private(typed_dataset, sql_engine_private_vis):
     data = _get_bitemporal_data(sql_engine_private_vis, "jsonb")
     pd.testing.assert_frame_equal(data, pd.DataFrame({
         "dp_id": [typed_dataset["loc2-dev0-pr-0-bi-json-0"]] * 2 + [typed_dataset["loc2-dev0-pub-0-bi-json-1"]] * 2,
-        "fc_time": pd.to_datetime([
+        "transaction_time": pd.to_datetime([
             "2024-01-01T01:00:00Z", "2024-01-01T02:00:00Z",
             "2024-01-01T01:00:00Z", "2024-01-01T02:00:00Z"
         ]),
-        "obs_time": pd.to_datetime([
+        "valid_time": pd.to_datetime([
             "2024-01-02T01:00:00Z", "2024-01-02T02:00:00Z",
             "2024-01-02T01:00:00Z", "2024-01-02T02:00:00Z"
         ]),
@@ -404,8 +404,8 @@ def _get_bitemporal_data(engine: sqlalchemy.engine.Engine, type_name: str) -> pd
 
     with engine.begin() as con:
         return pd.read_sql(f"""
-            SELECT dp_id, fc_time, obs_time, value, name, device_id, location_code, data_provider, unit, view_role, metadata, 
-                    data_type, temporality
+            SELECT dp_id, transaction_time, valid_time, value, name, device_id, location_code, data_provider, unit, 
+                    view_role, metadata, data_type, temporality
                 FROM bitemporal_{type_name}_details
-                ORDER BY dp_id, fc_time, obs_time;
+                ORDER BY dp_id, transaction_time, valid_time;
         """, con)

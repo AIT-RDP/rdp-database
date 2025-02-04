@@ -308,14 +308,14 @@ def typed_dataset(basic_dp_test_set, sql_engine_data_source) -> dict:
         for data in unitemporal_typed_test_data:
             type_name = data["type_name"]
             utc = datetime.timezone.utc
-            obs_time = datetime.datetime(2024, 1, 1, tzinfo=utc) + datetime.timedelta(hours=data["time_offset"])
+            valid_time = datetime.datetime(2024, 1, 1, tzinfo=utc) + datetime.timedelta(hours=data["time_offset"])
 
             con.execute(hlp.bind_params(sql.text(f"""
-                INSERT INTO raw_unitemporal_{type_name}(dp_id, obs_time, value) VALUES
-                (:dp_id, :obs_time, :value)
+                INSERT INTO raw_unitemporal_{type_name}(dp_id, valid_time, value) VALUES
+                (:dp_id, :valid_time, :value)
             """), parameters=dict(
                 dp_id=basic_dp_test_set[data["dp_id"]],
-                obs_time=obs_time,
+                valid_time=valid_time,
                 value=data["value"]
             )))
 
@@ -323,15 +323,15 @@ def typed_dataset(basic_dp_test_set, sql_engine_data_source) -> dict:
         for data in bitemporal_typed_test_data:
             type_name = data["type_name"]
             utc = datetime.timezone.utc
-            obs_time = datetime.datetime(2024, 1, 2, tzinfo=utc) + datetime.timedelta(hours=data["time_offset"])
-            fc_time = datetime.datetime(2024, 1, 1, tzinfo=utc) + datetime.timedelta(hours=data["time_offset"])
+            valid_time = datetime.datetime(2024, 1, 2, tzinfo=utc) + datetime.timedelta(hours=data["time_offset"])
+            transaction_time = datetime.datetime(2024, 1, 1, tzinfo=utc) + datetime.timedelta(hours=data["time_offset"])
 
             con.execute(hlp.bind_params(sql.text(f"""
-                INSERT INTO raw_bitemporal_{type_name}(dp_id, obs_time, fc_time, value) VALUES
-                    (:dp_id, :obs_time, :fc_time, :value)
+                INSERT INTO raw_bitemporal_{type_name}(dp_id, valid_time, transaction_time, value) VALUES
+                    (:dp_id, :valid_time, :transaction_time, :value)
             """), parameters=dict(
                 dp_id=basic_dp_test_set[data["dp_id"]],
-                obs_time=obs_time, fc_time=fc_time,
+                valid_time=valid_time, transaction_time=transaction_time,
                 value=data["value"]
             )))
 
