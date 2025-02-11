@@ -50,8 +50,9 @@ test-unit-pg17:
     - name: ${CI_DEPENDENCY_PROXY_DIRECT_GROUP_IMAGE_PREFIX}/timescale/timescaledb:${TS_VERSION}
       alias: postgres
   tags:
-    - docker
-    - x86_64
+    - ito
+#    - docker
+#    - x86_64
   image: ${CI_DEPENDENCY_PROXY_DIRECT_GROUP_IMAGE_PREFIX}/python:${PYTHON_VERSION}
   script:
     - pip install -r requirements-dev.txt
@@ -72,8 +73,9 @@ test-unit-pg17:
 .build-package:
   stage: release
   tags:
-    - docker
-    - x86_64
+    - ito
+#    - docker
+#    - x86_64
   image: ${CI_DEPENDENCY_PROXY_GROUP_IMAGE_PREFIX}/python:3.10
   variables:
     VERSION_FORMAT: "{base}.post{distance}.dev+{commit}"
