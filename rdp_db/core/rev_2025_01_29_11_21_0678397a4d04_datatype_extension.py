@@ -33,6 +33,7 @@ def upgrade():
     upgrade_type_checks()
     upgrade_data_views()
     upgrade_data_point_access_function()
+    upgrade_resolve_destination_function()
 
 
 def upgrade_move_data():
@@ -392,7 +393,7 @@ def create_data_point_access_function():
                     ) RETURNING data_points.id INTO dp_id;
             END IF;
             RETURN dp_id;
-    END;
+        END;
         $$ LANGUAGE plpgsql;
         
         GRANT EXECUTE ON FUNCTION public.get_or_create_data_point_id(
@@ -408,8 +409,82 @@ def create_data_point_access_function():
     """))
 
 
+def upgrade_resolve_destination_function():
+    """Introduces a function that can be used to resolve the dynamic destination information"""
+
+    op.execute(sql.text(f"""
+        CREATE OR REPLACE FUNCTION rdp_resolve_data_point_info(
+                name VARCHAR(128),
+                device_id VARCHAR(128),
+                location_code VARCHAR(128),
+                data_provider VARCHAR(128),
+                initial_unit TEXT DEFAULT NULL,
+                initial_metadata JSONB DEFAULT '{{}}'::jsonb,
+                initial_data_type time_series_data_type DEFAULT 'double',
+                initial_temporality time_Series_temporality DEFAULT NULL,
+                -- Output types that read back the information
+                OUT dp_id INTEGER,
+                OUT data_type time_series_data_type,
+                OUT temporality time_Series_temporality
+            ) AS $$
+        DECLARE
+                dp_info RECORD;
+        BEGIN
+            SELECT data_points.id AS dp_id, data_points.data_type AS data_type, data_points.temporality AS temporality 
+                FROM data_points
+                WHERE data_points.name = rdp_resolve_data_point_info.name AND
+                    ((data_points.device_id IS NULL AND rdp_resolve_data_point_info.device_id IS NULL) OR 
+                     (data_points.device_id = rdp_resolve_data_point_info.device_id)) AND
+                    data_points.location_code = rdp_resolve_data_point_info.location_code AND
+                    data_points.data_provider = rdp_resolve_data_point_info.data_provider
+                INTO dp_info;
+            IF NOT FOUND THEN
+                INSERT INTO data_points(
+                        name, device_id, location_code, data_provider, unit, metadata, 
+                        data_type, temporality
+                    ) VALUES (
+                        rdp_resolve_data_point_info.name,
+                        rdp_resolve_data_point_info.device_id,
+                        rdp_resolve_data_point_info.location_code,
+                        rdp_resolve_data_point_info.data_provider,
+                        rdp_resolve_data_point_info.initial_unit,
+                        rdp_resolve_data_point_info.initial_metadata,
+                        rdp_resolve_data_point_info.initial_data_type,
+                        rdp_resolve_data_point_info.initial_temporality
+                    ) RETURNING 
+                        data_points.id AS dp_id, 
+                        data_points.data_type AS data_type, 
+                        data_points.temporality AS temporality
+                    INTO dp_info;
+            END IF;
+            
+            rdp_resolve_data_point_info.dp_id := dp_info.dp_id;
+            rdp_resolve_data_point_info.data_type := dp_info.data_type;
+            rdp_resolve_data_point_info.temporality := dp_info.temporality;
+            
+        END;
+        $$ LANGUAGE plpgsql;
+
+        GRANT EXECUTE ON FUNCTION public.rdp_resolve_data_point_info(
+                VARCHAR, VARCHAR, VARCHAR, VARCHAR, TEXT, JSONB, time_series_data_type, time_series_temporality, 
+                OUT INTEGER, OUT time_series_data_type, OUT time_series_temporality
+            ) TO data_source_base;
+
+        COMMENT ON FUNCTION public.rdp_resolve_data_point_info(
+                VARCHAR, VARCHAR, VARCHAR, VARCHAR, TEXT, JSONB, time_series_data_type, time_series_temporality, 
+                OUT INTEGER, OUT time_series_data_type, OUT time_series_temporality
+            ) IS 
+            'Returns the datapoint id having the specified name, device_id, location_code, and data_provider. In 
+             case non exist a data point will be created. The initial_unit and initial_metadata will only be used
+             when creating the data point. No update will be performed. To gather a concise view on the destination 
+             tables, the function allows to read back the data_type and temporality from the data point.';
+    """))
+
+
 def downgrade():
     """Reverts the changes of this revision"""
+
+    downgrade_resolve_destination_function()
     downgrade_data_point_access_function()
     downgrade_data_views()
     downgrade_new_ts_tables()
@@ -417,6 +492,17 @@ def downgrade():
     downgrade_type_system()
     downgrade_legacy_views()
     downgrade_move_data()
+
+
+def downgrade_resolve_destination_function():
+    """Removes the corresponding function again"""
+
+    op.execute(sql.text("""
+        DROP FUNCTION IF EXISTS rdp_resolve_data_point_info(
+                VARCHAR, VARCHAR, VARCHAR, VARCHAR, TEXT, JSONB, time_series_data_type, time_series_temporality, 
+                OUT INTEGER, OUT time_series_data_type, OUT time_series_temporality
+            );
+    """))
 
 
 def downgrade_data_point_access_function():

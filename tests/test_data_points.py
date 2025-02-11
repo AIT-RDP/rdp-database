@@ -322,3 +322,49 @@ def test_data_point_access(clean_db, sql_engine_data_source: sqlalchemy.Engine):
         assert len(check_res) == 1
         assert check_res[0]["data_type"] == "bigint"
         assert check_res[0]["temporality"] == "bitemporal"
+
+
+def test_data_point_access_read_back(clean_db, sql_engine_data_source: sqlalchemy.Engine):
+    """Tests the rdp_resolve_data_point_info function using various access patterns"""
+
+    with sql_engine_data_source.begin() as con:
+        # Insert the original data point
+        res_orig = con.execute(sql.text("""
+            SELECT dp_id, data_type, temporality 
+                FROM rdp_resolve_data_point_info(
+                    'test_dp', 'test_device', 'here', 'intuition',
+                    initial_unit => '1', initial_metadata => '{"test": "data"}'::jsonb, 
+                    initial_data_type => 'bigint', initial_temporality => 'bitemporal' 
+                );
+        """))
+        res_orig = res_orig.mappings().fetchall()
+
+        assert len(res_orig) == 1
+        assert "dp_id" in res_orig[0]
+        assert res_orig[0]["data_type"] == "bigint"
+        assert res_orig[0]["temporality"] == "bitemporal"
+
+        # Call the function with a duplicate one
+        res_dup = con.execute(sql.text("""
+            SELECT dp_id, data_type, temporality 
+                FROM rdp_resolve_data_point_info(
+                    'test_dp', 'test_device', 'here', 'intuition',
+                    -- Set the initial values to something different, they should be ignored now.
+                    initial_unit => '2', initial_metadata => '{"test": "no-data"}'::jsonb, 
+                    initial_data_type => 'double', initial_temporality => 'unitemporal' 
+                );
+        """))
+        res_dup = res_dup.mappings().fetchall()
+        assert res_orig == res_dup
+
+        # Actually check the parameters
+        check_res = con.execute(sql.text("""
+            SELECT * FROM data_points WHERE id = :dp_id;
+        """), parameters=dict(dp_id=res_orig[0]["dp_id"]))
+        check_res = check_res.mappings().fetchall()
+
+        assert len(check_res) == 1
+        assert check_res[0]["data_type"] == "bigint"
+        assert check_res[0]["temporality"] == "bitemporal"
+        assert check_res[0]["unit"] == "1"
+        assert check_res[0]["metadata"] == {"test": "data"}
