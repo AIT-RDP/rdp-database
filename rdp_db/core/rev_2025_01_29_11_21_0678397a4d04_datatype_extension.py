@@ -67,7 +67,9 @@ def upgrade_create_legacy_views():
     data_source_user = os.environ['POSTGRES_DATA_SOURCE_USER']
 
     op.execute(sql.text(f"""
-        CREATE VIEW measurements AS SELECT dp_id, valid_time AS obs_time, value FROM raw_unitemporal_double;
+        CREATE VIEW measurements AS 
+            SELECT dp_id, valid_time AS obs_time, value FROM raw_unitemporal_double
+            WITH CASCADED CHECK OPTION;
         GRANT SELECT, INSERT, UPDATE ON measurements TO data_source_base, {data_source_user};
         GRANT SELECT ON measurements TO restricting_view_executor, {data_vis_user}; 
     """))
@@ -75,7 +77,8 @@ def upgrade_create_legacy_views():
     op.execute(sql.text(f"""
         CREATE VIEW forecasts AS 
             SELECT dp_id, valid_time AS obs_time, transaction_time AS fc_time, value 
-                FROM raw_bitemporal_double;
+                FROM raw_bitemporal_double
+            WITH CASCADED CHECK OPTION;
         GRANT SELECT, INSERT, UPDATE ON forecasts TO data_source_base, {data_source_user};
         GRANT SELECT ON forecasts TO restricting_view_executor, {data_vis_user}; 
     """))
