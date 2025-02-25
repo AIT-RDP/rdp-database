@@ -19,11 +19,18 @@ depends_on = None
 
 
 def upgrade():
+    op.execute(sa.text("""
+        DROP FUNCTION get_or_create_data_point_id(varchar, varchar, varchar, varchar); -- Avoid duplication        
+    """))
+    create_data_point_access_function()
+
+
+def create_data_point_access_function():
+    """Creates the actual access function without dropping any other one"""
+
     data_source_user = os.environ['POSTGRES_DATA_SOURCE_USER']
 
     op.execute(sa.text(f"""
-        DROP FUNCTION get_or_create_data_point_id(varchar, varchar, varchar, varchar); -- Avoid duplication
-        
         CREATE OR REPLACE FUNCTION get_or_create_data_point_id(
                 name VARCHAR(128),
                 device_id VARCHAR(128),

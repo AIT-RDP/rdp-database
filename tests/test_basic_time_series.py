@@ -1,5 +1,7 @@
 """
-Tests the raw series-related functionality (measurements, forecasts) of the database scheme
+Tests the basic raw series-related functionality (measurements, forecasts) of the database scheme
+
+The basic api is superseded by the raw API
 """
 
 import pandas as pd
@@ -66,10 +68,10 @@ def test_ts_basic_insert_and_read_forecasts(mixed_dataset, sql_engine_private_vi
 
 def test_ts_deny_public_vis(basic_dp_test_set, sql_engine_public_vis):
     """Tests whether direct access by the public visualization user is denied"""
-    with pytest.raises(sqlalchemy.exc.ProgrammingError, match=".*permission denied for table measurements.*"):
+    with pytest.raises(sqlalchemy.exc.ProgrammingError, match=".*permission denied for.*"):
         with sql_engine_public_vis.begin() as con:
             pd.read_sql("SELECT * FROM measurements;", con)
 
-    with pytest.raises(sqlalchemy.exc.ProgrammingError, match=".*permission denied for table forecasts.*"):
+    with pytest.raises(sqlalchemy.exc.ProgrammingError, match=".*permission denied for.*"):
         with sql_engine_public_vis.begin() as con:
             pd.read_sql("SELECT * FROM forecasts;", con)

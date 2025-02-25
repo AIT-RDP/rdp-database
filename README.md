@@ -1,10 +1,16 @@
 # Main RDP Database Scheme
 
 Hosts the scheme as well as the migration scripts that set up the long-term storage based on Timescale DB. 
-The project heavily relies on [Alembic](https://alembic.sqlalchemy.org/en/latest/index.html) to manage DB migration and 
-creation.
 
-## Getting started
+The project heavily relies on [Alembic](https://alembic.sqlalchemy.org/en/latest/index.html) to manage DB migration and 
+creation. To get started, it is highly advised to right jump into the development or production setup, and read through 
+the basic schema definition. In general, the DB schema defines a list of available time series called `data_points` as 
+well as various time series representations that link back to that list. In addition, it provides several 
+functionalities to simplify common tasks such as joining the detailed list of time series with the corresponding time
+series information. Since several projects need specific data structures that cannot be covered by the base schema, a 
+mechanism to use the base schema in project-specific setups is provided. 
+
+## Environment Setup
 
 ### Development Setup
 
@@ -44,10 +50,63 @@ poetry project has already been created.
 
 ## Schema Overview
 
-The database hosts the following main tables:
- * **data_points**: A detailed description of all data points
- * **forecasts**: The actual forecasting time series data including observation and forecasting time stamps
- * **measurements**: The time-series collecting real-time measurements only
+The database scheme mainly focuses on storing various kinds of time series. Each time series is represented by an entry 
+in the **data_points** table that hold the general information such as human-readable identifiers and selected meta-data
+fields. In contrast to many time-series databases like Influx DB, also bitemporal data representations such as 
+forecasts are supported. In contrast to conventional unitemporal representations that assign each point in time exactly
+one value, a forecast is characterized by having a time for which the forecast is valid (`valid_time`) and having a time
+at which the forecast was created (`transaction_time`). More information on the used nomenclature can be found on the 
+general introduction to [temporal databases](https://en.wikipedia.org/wiki/Temporal_database). In case the forecast 
+is periodically repeated, for each valid time, multiple forecasts may exist. Similar phenomena occur, for instance, 
+when schedules are repeatedly updated. In the current scheme, the distinction between different timing schemes is 
+called temporality. As of now, the scheme supports unitemporal and bitemporal time series.
+
+In addition, time-series information can be encoded by multiple data types. As of now, the following data types are 
+supported:
+ * **double** (default)
+ * **bigint**
+ * **boolean**
+ * **jsonb**
+
+It is directly possible to store, for instance, strings and complex configurations via jsonb representations. In order 
+to reduce the storage space in case of repeated samples, Timescale DB will perform 
+[deduplication on compression](https://docs.timescale.com/use-timescale/latest/compression/compression-methods/#data-agnostic-compression). 
+However, this method will likely not be as performant as the other methods. Hence, it is strongly advised to flatten 
+large-scale time series and use the more specialized tables, instead of the general jsonb representation.
+
+For each temporality (uni- and bitemporal) as well as each data type, a dedicated table of raw time-series values is 
+created. For instance, unitemporal double values are stored in the **raw_unitemporal_double** table. Each sample 
+directly links back to the general data via the data point ID (`dp_id`) foreign key relation. Each data point should 
+have exactly one temporality and data type. I.e. the data of onw data point should not be scattered around multiple raw
+tables. If, for instance, reference measurements and forecasts for a single observation need to be stored, two 
+dedicated entries in the **data_points** table are needed. To structure the data points in a way that such relations 
+among time series can be clearly represented, the human-readable identifier is split into the following fields:
+
+ * **name**: The generalized name or type of the time series such `air_temperature` for outside temperature measurements
+   or `P_AC_tot` for some total AC power measurements. Of course, you are free to choose any other naming convention. 
+ * **device_id**: The identifier of the originating device. For instance, `P_AC_tot` may be recorded by multiple meters 
+   on one side. This field, would hold the meter id, which needs to be unique on each location.
+ * **location_code**: An identifier to differentiate between multiple sites. For instance, each site may have multiple 
+   `Main_Meter` devices. Hence, a dedicated site identifier can be used to differentiate the sites but also to quickly 
+   group assets for further evaluation.
+ * **data_provider**: For each specific quantity, multiple data sources and providers may be available. For instance, it
+   may be recorded by multiple measurement devices, or a single reference measurement and a corresponding forecast may 
+   be recorded. To differentiate between those sources, different provider IDs could be used.
+
+The overall ER-diagram of the main data tables reads as follows:
+
+![ER diagram of the main tables](docs/er_diagram-main-tables.png) 
+
+### Data Access
+
+For security reasons, access to the raw data tables is restricted to selected users only. View users that may have 
+restricted data access can only select data points with proper permissions. To efficiently query the data, several 
+type-specific views are created. Since access is controlled on data point level and most often, the time series 
+information needs to be joined with the time series information anyway, detailed information on the data_points is 
+appended to the actual time series information. By that, the corresponding time series can be filtered without the need 
+of manual joins. The following graphics shows the detailed views.
+
+![ER diagram of the main views](docs/er_diagram-main-views.png)
 
 ### Security Concept
 The scheme uses Row Level Security (RLS) on the **data_points** table to separate the data that is visible to certain 

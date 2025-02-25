@@ -4,6 +4,7 @@ Tests the basic data point creation and update logic
 
 import pandas as pd
 import pytest
+import sqlalchemy.exc
 import sqlalchemy.sql as sql
 
 
@@ -65,6 +66,36 @@ def test_direct_dp_creation_extensive(clean_db, sql_engine_data_source):
     pd.testing.assert_series_equal(data["view_role"], pd.Series(["view_internal", "view_public"]), check_names=False)
     pd.testing.assert_series_equal(data["metadata"], pd.Series([{"hello": "json"}, "hi everyone"]), check_names=False)
     pd.testing.assert_series_equal(data["id"], pd.Series([1, 2]), check_names=False)
+
+
+def test_direct_dp_creation_target_series(clean_db, sql_engine_data_source):
+    """
+    Tests the insert mechanism having some target series specification
+    """
+
+    with sql_engine_data_source.begin() as con:
+        con.execute(sql.text("""
+            INSERT INTO data_points(name, device_id, location_code, data_provider, data_type, temporality) VALUES
+                ('name_0', 'device_0', 'nowhere special', 'crystal ball', 'double', 'unitemporal'),
+                ('name_1', NULL, 'here', 'common knowledge', 'double', 'bitemporal'),
+                ('name_2', NULL, 'here', 'common knowledge', 'double', NULL);
+        """))
+
+        data = pd.read_sql("""
+            SELECT id, name, data_type, temporality
+                FROM data_points
+                ORDER BY name;
+        """, con)
+
+    assert data is not None
+    assert isinstance(data, pd.DataFrame)
+
+    pd.testing.assert_series_equal(data["name"], pd.Series(["name_0", "name_1", "name_2"]), check_names=False)
+    pd.testing.assert_series_equal(data["data_type"], pd.Series(["double", "double", "double"]), check_names=False)
+    pd.testing.assert_series_equal(data["temporality"], pd.Series([
+        "unitemporal", "bitemporal", None
+    ]), check_names=False)
+    pd.testing.assert_series_equal(data["id"], pd.Series([1, 2, 3]), check_names=False)
 
 
 def test_role_based_dp_access(clean_db, sql_engine_data_source, sql_engine_private_vis, sql_engine_public_vis):
@@ -180,3 +211,160 @@ def test_basic_dp_test_set(basic_dp_test_set, sql_engine_data_source):
         "data_provider": ["provider_0", "provider_0", "provider_0", "provider_0"],
         "view_role": ["view_public", "view_public", "view_public", "view_internal"]
     }, index=data_point_ids), check_names=False)
+
+
+def test_invalid_data_type(clean_db, sql_engine_data_source):
+    """Tests whether an error is raised on invalid data type specs"""
+
+    with pytest.raises(sqlalchemy.exc.DataError, match=".*invalid input value for enum.*"):
+        with sql_engine_data_source.begin() as con:
+            con.execute(sql.text("""
+                INSERT INTO data_points(name, device_id, location_code, data_provider, view_role, data_type) VALUES
+                    ('name_0', 'device_0', 'nowhere special', 'crystal ball', 'view_internal', 'qbit');
+            """))
+
+
+def test_invalid_temporality(clean_db, sql_engine_data_source):
+    """Tests whether an error is raised on invalid data temporality specs"""
+
+    with pytest.raises(sqlalchemy.exc.DataError, match=".*invalid input value for enum.*"):
+        with sql_engine_data_source.begin() as con:
+            con.execute(sql.text("""
+                INSERT INTO data_points(name, device_id, location_code, data_provider, view_role, temporality) VALUES
+                    ('name_0', 'device_0', 'nowhere special', 'crystal ball', 'view_internal', 'qbit');
+            """))
+
+
+@pytest.mark.parametrize("type_name", [
+    "bigint", "boolean", "jsonb"
+])
+def test_missing_temporality_insert(clean_db, sql_engine_data_source: sqlalchemy.Engine, type_name):
+    """Tests whether inserting a spurious data point fails"""
+
+    with sql_engine_data_source.begin() as con:
+        with pytest.raises(sqlalchemy.exc.IntegrityError, match=".*check_temporality.*"):
+            con.execute(sql.text("""
+                    INSERT INTO data_points(name, device_id, location_code, data_provider, data_type, temporality) VALUES
+                        ('name_0', 'device_0', 'nowhere special', 'crystal ball', :type_name, NULL);
+            """), parameters=dict(type_name=type_name))
+
+
+@pytest.mark.parametrize("type_name", [
+    "bigint", "boolean", "jsonb"
+])
+def test_missing_temporality_side_update(clean_db, sql_engine_data_source: sqlalchemy.Engine, type_name):
+    """Tests whether inserting a spurious data point fails"""
+
+    with sql_engine_data_source.begin() as con:
+        con.execute(sql.text("""
+                INSERT INTO data_points(name, device_id, location_code, data_provider, data_type, temporality) VALUES
+                    ('name_0', 'device_0', 'nowhere special', 'crystal ball', 'double', NULL);
+        """))
+
+        with pytest.raises(sqlalchemy.exc.IntegrityError, match=".*check_temporality.*"):
+            con.execute(sql.text("""
+                    UPDATE data_points SET data_type=:type_name 
+                    WHERE name='name_0' AND device_id='device_0' AND location_code='nowhere special' AND 
+                        data_provider='crystal ball';
+            """), parameters=dict(type_name=type_name))
+
+
+@pytest.mark.parametrize("type_name", [
+    "bigint", "boolean", "jsonb"
+])
+def test_missing_temporality_direct_update(clean_db, sql_engine_data_source: sqlalchemy.Engine, type_name):
+    """Tests whether inserting a spurious data point fails"""
+
+    with sql_engine_data_source.begin() as con:
+        con.execute(sql.text("""
+                INSERT INTO data_points(name, device_id, location_code, data_provider, data_type, temporality) VALUES
+                    ('name_0', 'device_0', 'nowhere special', 'crystal ball', :type_name, 'unitemporal');
+        """), parameters=dict(type_name=type_name))
+
+        with pytest.raises(sqlalchemy.exc.IntegrityError, match=".*check_temporality.*"):
+            con.execute(sql.text("""
+                    UPDATE data_points SET temporality=NULL 
+                    WHERE name='name_0' AND device_id='device_0' AND location_code='nowhere special' AND 
+                        data_provider='crystal ball';
+            """))
+
+
+def test_data_point_access(clean_db, sql_engine_data_source: sqlalchemy.Engine):
+    """Tests the get_or_create_data_point function using various access patterns"""
+
+    with sql_engine_data_source.begin() as con:
+        # Insert the original data point
+        res_orig = con.execute(sql.text("""
+            SELECT get_or_create_data_point_id(
+                    'test_dp', 'test_device', 'here', 'intuition', NULL, '{}'::jsonb, 'bigint', 'bitemporal' 
+                ) AS dp_id;
+        """))
+        res_orig = res_orig.mappings().fetchall()
+
+        assert len(res_orig) == 1
+        assert "dp_id" in res_orig[0]
+
+        # Call the function with a duplicate one
+        res_dup = con.execute(sql.text("""
+            SELECT get_or_create_data_point_id(
+                    'test_dp', 'test_device', 'here', 'intuition' 
+                ) AS dp_id;
+        """))
+        res_dup = res_dup.mappings().fetchall()
+        assert res_orig == res_dup
+
+        # Actually check the parameters
+        check_res = con.execute(sql.text("""
+            SELECT * FROM data_points WHERE id = :dp_id;
+        """), parameters=dict(dp_id=res_orig[0]["dp_id"]))
+        check_res = check_res.mappings().fetchall()
+
+        assert len(check_res) == 1
+        assert check_res[0]["data_type"] == "bigint"
+        assert check_res[0]["temporality"] == "bitemporal"
+
+
+def test_data_point_access_read_back(clean_db, sql_engine_data_source: sqlalchemy.Engine):
+    """Tests the rdp_resolve_data_point_info function using various access patterns"""
+
+    with sql_engine_data_source.begin() as con:
+        # Insert the original data point
+        res_orig = con.execute(sql.text("""
+            SELECT dp_id, data_type, temporality 
+                FROM rdp_resolve_data_point_info(
+                    'test_dp', 'test_device', 'here', 'intuition',
+                    initial_unit => '1', initial_metadata => '{"test": "data"}'::jsonb, 
+                    initial_data_type => 'bigint', initial_temporality => 'bitemporal' 
+                );
+        """))
+        res_orig = res_orig.mappings().fetchall()
+
+        assert len(res_orig) == 1
+        assert "dp_id" in res_orig[0]
+        assert res_orig[0]["data_type"] == "bigint"
+        assert res_orig[0]["temporality"] == "bitemporal"
+
+        # Call the function with a duplicate one
+        res_dup = con.execute(sql.text("""
+            SELECT dp_id, data_type, temporality 
+                FROM rdp_resolve_data_point_info(
+                    'test_dp', 'test_device', 'here', 'intuition',
+                    -- Set the initial values to something different, they should be ignored now.
+                    initial_unit => '2', initial_metadata => '{"test": "no-data"}'::jsonb, 
+                    initial_data_type => 'double', initial_temporality => 'unitemporal' 
+                );
+        """))
+        res_dup = res_dup.mappings().fetchall()
+        assert res_orig == res_dup
+
+        # Actually check the parameters
+        check_res = con.execute(sql.text("""
+            SELECT * FROM data_points WHERE id = :dp_id;
+        """), parameters=dict(dp_id=res_orig[0]["dp_id"]))
+        check_res = check_res.mappings().fetchall()
+
+        assert len(check_res) == 1
+        assert check_res[0]["data_type"] == "bigint"
+        assert check_res[0]["temporality"] == "bitemporal"
+        assert check_res[0]["unit"] == "1"
+        assert check_res[0]["metadata"] == {"test": "data"}

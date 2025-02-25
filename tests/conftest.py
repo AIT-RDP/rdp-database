@@ -6,15 +6,19 @@ test runner itself, as the runner implementation does no variables replacement a
 precedence.
 """
 import contextlib
+import datetime
 import os
 import urllib.parse
 
 import alembic.config
 import dotenv
+import pandas as pd
 import pytest
 import sqlalchemy as sql
 import sqlalchemy.exc
 import tenacity
+
+import tests.db_helpers as hlp
 
 dotenv.load_dotenv(dotenv_path=".env")
 
@@ -113,59 +117,93 @@ def do_redeployment_cycle():
 def basic_dp_test_set(clean_db, sql_engine_data_source) -> dict[str, int]:
     """Defines a basic set of datapoints and returns their IDs."""
     return {
-        "loc0-dev0-pub-0": _create_dp(
+        "loc0-dev0-pub-0": hlp.create_dp(
             sql_engine_data_source, "name_0", "device_0", "location_0", "provider_0",
             view_role="view_public", unit="ISO football fields", metadata={"note": "with 10mm grass only"}
         ),
-        "loc0-dev0-pub-1": _create_dp(
+        "loc0-dev0-pub-1": hlp.create_dp(
             sql_engine_data_source, "name_1", "device_0", "location_0", "provider_0",
             view_role="view_public", unit="DIN bathtubs", metadata={"note": "don't trust the units"}
         ),
-        "loc1-dev1-pub-0": _create_dp(
+        "loc1-dev1-pub-0": hlp.create_dp(
             sql_engine_data_source, "name_0", "device_1", "location_1", "provider_0",
             view_role="view_public"
         ),
-        "loc0-dev0-pr-2": _create_dp(
+        "loc0-dev0-pr-2": hlp.create_dp(
             sql_engine_data_source, "name_2", "device_0", "location_0", "provider_0",
             view_role="view_internal"
         ),
+
+        # Data points with a defined datatype and temporality
+        "loc2-dev0-pr-0-uni-dbl-0": hlp.create_dp(
+            sql_engine_data_source, "name_0", "device_0", "location_2", "provider_1",
+            view_role="view_internal", data_type='double', temporality='unitemporal'
+        ),
+        "loc2-dev0-pub-0-uni-dbl-1": hlp.create_dp(
+            sql_engine_data_source, "name_1", "device_0", "location_2", "provider_1",
+            view_role="view_public", data_type='double', temporality='unitemporal'
+        ),
+        "loc2-dev0-pr-0-bi-dbl-0": hlp.create_dp(
+            sql_engine_data_source, "name_0", "device_0", "location_2", "provider_2",
+            view_role="view_internal", data_type='double', temporality='bitemporal'
+        ),
+        "loc2-dev0-pub-0-bi-dbl-1": hlp.create_dp(
+            sql_engine_data_source, "name_1", "device_0", "location_2", "provider_2",
+            view_role="view_public", data_type='double', temporality='bitemporal'
+        ),
+
+        "loc2-dev0-pr-0-uni-int-0": hlp.create_dp(
+            sql_engine_data_source, "name_0", "device_0", "location_3", "provider_1",
+            view_role="view_internal", data_type='bigint', temporality='unitemporal'
+        ),
+        "loc2-dev0-pub-0-uni-int-1": hlp.create_dp(
+            sql_engine_data_source, "name_1", "device_0", "location_3", "provider_1",
+            view_role="view_public", data_type='bigint', temporality='unitemporal'
+        ),
+        "loc2-dev0-pr-0-bi-int-0": hlp.create_dp(
+            sql_engine_data_source, "name_0", "device_0", "location_3", "provider_2",
+            view_role="view_internal", data_type='bigint', temporality='bitemporal'
+        ),
+        "loc2-dev0-pub-0-bi-int-1": hlp.create_dp(
+            sql_engine_data_source, "name_1", "device_0", "location_3", "provider_2",
+            view_role="view_public", data_type='bigint', temporality='bitemporal'
+        ),
+
+        "loc2-dev0-pr-0-uni-bool-0": hlp.create_dp(
+            sql_engine_data_source, "name_0", "device_0", "location_4", "provider_1",
+            view_role="view_internal", data_type='boolean', temporality='unitemporal'
+        ),
+        "loc2-dev0-pub-0-uni-bool-1": hlp.create_dp(
+            sql_engine_data_source, "name_1", "device_0", "location_4", "provider_1",
+            view_role="view_public", data_type='boolean', temporality='unitemporal'
+        ),
+        "loc2-dev0-pr-0-bi-bool-0": hlp.create_dp(
+            sql_engine_data_source, "name_0", "device_0", "location_4", "provider_2",
+            view_role="view_internal", data_type='boolean', temporality='bitemporal'
+        ),
+        "loc2-dev0-pub-0-bi-bool-1": hlp.create_dp(
+            sql_engine_data_source, "name_1", "device_0", "location_4", "provider_2",
+            view_role="view_public", data_type='boolean', temporality='bitemporal'
+        ),
+
+        "loc2-dev0-pr-0-uni-json-0": hlp.create_dp(
+            sql_engine_data_source, "name_0", "device_0", "location_5", "provider_1",
+            view_role="view_internal", data_type='jsonb', temporality='unitemporal'
+        ),
+        "loc2-dev0-pub-0-uni-json-1": hlp.create_dp(
+            sql_engine_data_source, "name_1", "device_0", "location_5", "provider_1",
+            view_role="view_public", data_type='jsonb', temporality='unitemporal'
+        ),
+        "loc2-dev0-pr-0-bi-json-0": hlp.create_dp(
+            sql_engine_data_source, "name_0", "device_0", "location_5", "provider_2",
+            view_role="view_internal", data_type='jsonb', temporality='bitemporal'
+        ),
+        "loc2-dev0-pub-0-bi-json-1": hlp.create_dp(
+            sql_engine_data_source, "name_1", "device_0", "location_5", "provider_2",
+            view_role="view_public", data_type='jsonb', temporality='bitemporal'
+        ),
+
     }
-
-
-def _create_dp(eng: sql.Engine, name, device_id, location_code, data_provider, unit=None, metadata=None,
-               view_role=None):
-    """Creates (or returns) the datapoint and returns its number"""
-
-    if metadata is None:
-        metadata = {}
-
-    with eng.begin() as con:
-        params = [  # metadata needs special treatment. Hence, the explicit construction
-            sql.bindparam("metadata", metadata, type_=sql.dialects.postgresql.JSONB),
-            sql.bindparam("name", name), sql.bindparam("device_id", device_id),
-            sql.bindparam("location_code", location_code), sql.bindparam("data_provider", data_provider),
-            sql.bindparam("unit", unit)
-        ]
-
-        res = con.execute(sql.text("""
-            SELECT get_or_create_data_point_id(
-                    :name, :device_id, :location_code, :data_provider, :unit, :metadata
-                ) AS dp_id;
-        """).bindparams(*params))
-
-        res = res.mappings().fetchall()
-        assert len(res) == 1, "No results returned by the query"
-        assert "dp_id" in res[0], "No pd_id returned by query"
-
-        dp_id = res[0]["dp_id"]
-
-        # Update the view role, if needed
-        if view_role is not None:
-            con.execute(sql.text("""
-                UPDATE data_points SET view_role=:view_role WHERE id=:dp_id;
-            """), parameters=dict(view_role=view_role, dp_id=dp_id))
-
-    return dp_id
 
 
 @pytest.fixture()
@@ -213,3 +251,88 @@ def mixed_dataset(basic_dp_test_set, sql_engine_data_source):
         **basic_dp_test_set,
         "dp_mea_a": dp_mea_a, "dp_mea_b": dp_mea_b, "dp_fc_a": dp_fc_a, "dp_fc_b": dp_fc_b
     }
+
+
+unitemporal_typed_test_data = [
+    dict(dp_id="loc2-dev0-pr-0-uni-dbl-0", type_name="double", time_offset=1, value=1.),
+    dict(dp_id="loc2-dev0-pr-0-uni-dbl-0", type_name="double", time_offset=2, value=2.),
+    dict(dp_id="loc2-dev0-pub-0-uni-dbl-1", type_name="double", time_offset=1, value=-3.),
+    dict(dp_id="loc2-dev0-pub-0-uni-dbl-1", type_name="double", time_offset=2, value=-4.),
+
+    dict(dp_id="loc2-dev0-pr-0-uni-int-0", type_name="bigint", time_offset=1, value=1),
+    dict(dp_id="loc2-dev0-pr-0-uni-int-0", type_name="bigint", time_offset=2, value=2),
+    dict(dp_id="loc2-dev0-pub-0-uni-int-1", type_name="bigint", time_offset=1, value=-3),
+    dict(dp_id="loc2-dev0-pub-0-uni-int-1", type_name="bigint", time_offset=2, value=-4),
+
+    dict(dp_id="loc2-dev0-pr-0-uni-bool-0", type_name="boolean", time_offset=1, value=True),
+    dict(dp_id="loc2-dev0-pr-0-uni-bool-0", type_name="boolean", time_offset=2, value=False),
+    dict(dp_id="loc2-dev0-pub-0-uni-bool-1", type_name="boolean", time_offset=1, value=False),
+    dict(dp_id="loc2-dev0-pub-0-uni-bool-1", type_name="boolean", time_offset=2, value=True),
+
+    dict(dp_id="loc2-dev0-pr-0-uni-json-0", type_name="jsonb", time_offset=1, value=dict(myval=1)),
+    dict(dp_id="loc2-dev0-pr-0-uni-json-0", type_name="jsonb", time_offset=2, value=dict(myval=2)),
+    dict(dp_id="loc2-dev0-pub-0-uni-json-1", type_name="jsonb", time_offset=1, value=dict(myval=-3)),
+    dict(dp_id="loc2-dev0-pub-0-uni-json-1", type_name="jsonb", time_offset=2, value=dict(myval=-4)),
+]
+
+bitemporal_typed_test_data = [
+    dict(dp_id="loc2-dev0-pr-0-bi-dbl-0", type_name="double", time_offset=1, value=1.),
+    dict(dp_id="loc2-dev0-pr-0-bi-dbl-0", type_name="double", time_offset=2, value=2.),
+    dict(dp_id="loc2-dev0-pub-0-bi-dbl-1", type_name="double", time_offset=1, value=-3.),
+    dict(dp_id="loc2-dev0-pub-0-bi-dbl-1", type_name="double", time_offset=2, value=-4.),
+
+    dict(dp_id="loc2-dev0-pr-0-bi-int-0", type_name="bigint", time_offset=1, value=1),
+    dict(dp_id="loc2-dev0-pr-0-bi-int-0", type_name="bigint", time_offset=2, value=2),
+    dict(dp_id="loc2-dev0-pub-0-bi-int-1", type_name="bigint", time_offset=1, value=-3),
+    dict(dp_id="loc2-dev0-pub-0-bi-int-1", type_name="bigint", time_offset=2, value=-4),
+
+    dict(dp_id="loc2-dev0-pr-0-bi-bool-0", type_name="boolean", time_offset=1, value=True),
+    dict(dp_id="loc2-dev0-pr-0-bi-bool-0", type_name="boolean", time_offset=2, value=False),
+    dict(dp_id="loc2-dev0-pub-0-bi-bool-1", type_name="boolean", time_offset=1, value=False),
+    dict(dp_id="loc2-dev0-pub-0-bi-bool-1", type_name="boolean", time_offset=2, value=True),
+
+    dict(dp_id="loc2-dev0-pr-0-bi-json-0", type_name="jsonb", time_offset=1, value=dict(myval=1)),
+    dict(dp_id="loc2-dev0-pr-0-bi-json-0", type_name="jsonb", time_offset=2, value=dict(myval=2)),
+    dict(dp_id="loc2-dev0-pub-0-bi-json-1", type_name="jsonb", time_offset=1, value=dict(myval=-3)),
+    dict(dp_id="loc2-dev0-pub-0-bi-json-1", type_name="jsonb", time_offset=2, value=dict(myval=-4)),
+]
+
+
+@pytest.fixture()
+def typed_dataset(basic_dp_test_set, sql_engine_data_source) -> dict:
+    """Defines a test set that covers all available data types"""
+
+    with sql_engine_data_source.begin() as con:
+
+        # Insert unitemporal data
+        for data in unitemporal_typed_test_data:
+            type_name = data["type_name"]
+            utc = datetime.timezone.utc
+            valid_time = datetime.datetime(2024, 1, 1, tzinfo=utc) + datetime.timedelta(hours=data["time_offset"])
+
+            con.execute(hlp.bind_params(sql.text(f"""
+                INSERT INTO raw_unitemporal_{type_name}(dp_id, valid_time, value) VALUES
+                (:dp_id, :valid_time, :value)
+            """), parameters=dict(
+                dp_id=basic_dp_test_set[data["dp_id"]],
+                valid_time=valid_time,
+                value=data["value"]
+            )))
+
+        # Insert bitemporal data
+        for data in bitemporal_typed_test_data:
+            type_name = data["type_name"]
+            utc = datetime.timezone.utc
+            valid_time = datetime.datetime(2024, 1, 2, tzinfo=utc) + datetime.timedelta(hours=data["time_offset"])
+            transaction_time = datetime.datetime(2024, 1, 1, tzinfo=utc) + datetime.timedelta(hours=data["time_offset"])
+
+            con.execute(hlp.bind_params(sql.text(f"""
+                INSERT INTO raw_bitemporal_{type_name}(dp_id, valid_time, transaction_time, value) VALUES
+                    (:dp_id, :valid_time, :transaction_time, :value)
+            """), parameters=dict(
+                dp_id=basic_dp_test_set[data["dp_id"]],
+                valid_time=valid_time, transaction_time=transaction_time,
+                value=data["value"]
+            )))
+
+    return basic_dp_test_set
