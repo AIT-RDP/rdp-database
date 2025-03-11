@@ -8,7 +8,7 @@ Create Date: 2022-12-07 10:35:36.588583
 from alembic import op
 import sqlalchemy as sa
 
-import e3_ems.versions.aa0daa782efc_introduce_access_policies as access_policy_def
+import rdp_db.core.rev_2022_10_20_09_54_aa0daa782efc_introduce_access_policies as access_policy_def
 
 # revision identifiers, used by Alembic.
 revision = '62ffa7f9c9a4'
@@ -26,37 +26,37 @@ def upgrade():
 def upgrade_hypertable_organization():
     """Upgrades the hypertable storage and compression parameters"""
 
-    op.execute("""
+    op.execute(sa.text("""
         DROP INDEX forecasts_obs_time_idx;
         DROP INDEX measurements_obs_time_idx;
         DROP INDEX idx_forecasts_id_obs_time;
         DROP INDEX idx_measurements_id_obs_time;
-    """)
+    """))
 
-    op.execute("""
+    op.execute(sa.text("""
         ALTER TABLE measurements SET (
             timescaledb.compress=true,
             timescaledb.compress_segmentby='dp_id'
         );
-        SELECT add_compression_policy('measurements', INTERVAL '2 days');
         SELECT set_chunk_time_interval('measurements', INTERVAL '5 days');
-    """)
+        SELECT add_compression_policy('measurements', INTERVAL '2 days');
+    """))
 
-    op.execute("""
+    op.execute(sa.text("""
         ALTER TABLE forecasts SET (
             timescaledb.compress=true,
             timescaledb.compress_segmentby='dp_id',
             timescaledb.compress_orderby='obs_time DESC, fc_time DESC'
         );
-        SELECT add_compression_policy('forecasts', INTERVAL '2 days');
         SELECT set_chunk_time_interval('forecasts', INTERVAL '24 hours');
-    """)
+        SELECT add_compression_policy('forecasts', INTERVAL '2 days');
+    """))
 
 
 def upgrade_forecasts_horizon():
     """Alters the forecasts' horizon function to speed up the execution"""
 
-    op.execute("""
+    op.execute(sa.text("""
         CREATE OR REPLACE FUNCTION forecasts_horizon(
             fc_horizon INTERVAL,
             fc_series_begin TIMESTAMPTZ,
@@ -118,7 +118,7 @@ def upgrade_forecasts_horizon():
         GRANT EXECUTE ON FUNCTION forecasts_horizon(
                 INTERVAL, TIMESTAMPTZ, TIMESTAMPTZ, VARCHAR(128), VARCHAR(128), VARCHAR(128), VARCHAR(128), BOOL
             ) TO view_base;
-    """)
+    """))
 
 
 def downgrade():
@@ -130,31 +130,31 @@ def downgrade():
 
 def downgrade_hypertable_organization():
     """Downgrades the hypertable fc organization and decompresses the data"""
-    op.execute("""
+    op.execute(sa.text("""
+        SELECT remove_compression_policy('forecasts', true); 
         SELECT set_chunk_time_interval('forecasts', INTERVAL '7 days');
-        SELECT remove_compression_policy('forecasts', true);
         -- Decompressed all compressed chunks. If that command fails with a deadlock, consider to stop the feeder 
         -- processes like RedSQL
         SELECT decompress_chunk(format('%I.%I', chunk_schema, chunk_name)::regclass) 
             FROM chunk_compression_stats('forecasts')
             WHERE compression_status = 'Compressed';
         ALTER TABLE forecasts SET (timescaledb.compress=false);
-    """)
+    """))
 
-    op.execute("""
-        SELECT set_chunk_time_interval('measurements', INTERVAL '7 days');
+    op.execute(sa.text("""
         SELECT remove_compression_policy('measurements', true);
+        SELECT set_chunk_time_interval('measurements', INTERVAL '7 days');
         -- Decompressed all compressed chunks. If that command fails with a deadlock, consider to stop the feeder 
         -- processes like RedSQL
         SELECT decompress_chunk(format('%I.%I', chunk_schema, chunk_name)::regclass) 
             FROM chunk_compression_stats('measurements')
             WHERE compression_status = 'Compressed';
         ALTER TABLE measurements SET (timescaledb.compress=false);
-    """)
+    """))
 
-    op.execute("""
+    op.execute(sa.text("""
         CREATE INDEX idx_measurements_id_obs_time ON measurements(dp_id, obs_time);
         CREATE INDEX idx_forecasts_id_obs_time ON forecasts(dp_id, obs_time);
         CREATE INDEX measurements_obs_time_idx ON public.measurements USING btree (obs_time DESC);
         CREATE INDEX forecasts_obs_time_idx ON public.forecasts USING btree (obs_time DESC);
-    """)
+    """))

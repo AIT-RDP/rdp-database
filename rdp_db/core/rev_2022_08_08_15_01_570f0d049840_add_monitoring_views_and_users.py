@@ -25,7 +25,7 @@ def upgrade():
 def _upgrade_views():
     """Creates the views showing measurement and forecasting details"""
 
-    op.execute("""
+    op.execute(sa.text("""
         CREATE OR REPLACE VIEW forecasts_latest(
             dp_id, obs_time, fc_time, value, name, device_id, location_code, data_provider, unit
         ) AS
@@ -40,9 +40,9 @@ def _upgrade_views():
                 );
         
         COMMENT ON VIEW forecasts_latest IS 'Shows the latest available predictions for each observation';
-    """)
+    """))
 
-    op.execute("""
+    op.execute(sa.text("""
         CREATE OR REPLACE VIEW forecasts_details(
             dp_id, obs_time, fc_time, value, name, device_id, location_code, data_provider, unit
         ) AS
@@ -53,9 +53,9 @@ def _upgrade_views():
                 ;
         
         COMMENT ON VIEW forecasts_details IS 'Shows detailed information on on both recent and outdated forecasts';
-    """)
+    """))
 
-    op.execute("""
+    op.execute(sa.text("""
         CREATE OR REPLACE VIEW measurements_details(
             dp_id, obs_time, value, name, device_id, location_code, data_provider, unit
         ) AS
@@ -66,14 +66,14 @@ def _upgrade_views():
                 ;
 
         COMMENT ON VIEW measurements_details IS 'Shows detailed information on each measurement';
-    """)
+    """))
 
 
 def _upgrade_basic_monitoring_users():
     """Creates the basic monitoring users"""
 
     data_source_user = os.environ['POSTGRES_DATA_SOURCE_USER']
-    op.execute(f"""
+    op.execute(sa.text(f"""
         CREATE ROLE {data_source_user} 
             NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT 
             LOGIN PASSWORD '{os.environ['POSTGRES_DATA_SOURCE_PASSWORD']}';
@@ -84,10 +84,10 @@ def _upgrade_basic_monitoring_users():
         GRANT EXECUTE ON FUNCTION public.get_or_create_data_point_id(varchar, varchar, varchar, varchar) 
             TO {data_source_user};
 
-    """)
+    """))
 
     data_vis_user = os.environ['POSTGRES_DATA_VIS_USER']
-    op.execute(f"""
+    op.execute(sa.text(f"""
         CREATE ROLE {data_vis_user} 
             NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT 
             LOGIN PASSWORD '{os.environ['POSTGRES_DATA_VIS_PASSWORD']}';
@@ -95,29 +95,29 @@ def _upgrade_basic_monitoring_users():
         GRANT SELECT ON TABLE data_points, forecasts, measurements TO {data_vis_user};
         GRANT SELECT ON SEQUENCE data_points_id_seq TO {data_vis_user};
         GRANT SELECT, TRIGGER ON TABLE forecasts_latest, forecasts_details, measurements_details TO {data_vis_user};
-    """)
+    """))
 
 
 def downgrade():
     data_source_user = os.environ['POSTGRES_DATA_SOURCE_USER']
-    op.execute(f"""
+    op.execute(sa.text(f"""
         REVOKE ALL ON TABLE data_points, forecasts, measurements FROM {data_source_user};
         REVOKE ALL ON SEQUENCE data_points_id_seq FROM {data_source_user};
         REVOKE ALL ON FUNCTION public.get_or_create_data_point_id(varchar, varchar, varchar, varchar) 
             FROM {data_source_user};
         
         DROP USER {data_source_user};
-    """)
+    """))
 
     data_vis_user = os.environ['POSTGRES_DATA_VIS_USER']
-    op.execute(f"""
+    op.execute(sa.text(f"""
         REVOKE ALL ON TABLE data_points, forecasts, measurements FROM {data_vis_user};
         REVOKE ALL ON SEQUENCE data_points_id_seq FROM {data_vis_user};
         REVOKE ALL ON TABLE forecasts_latest, forecasts_details, measurements_details FROM {data_vis_user};
 
         DROP USER {data_vis_user};
-    """)
+    """))
 
-    op.execute("DROP VIEW measurements_details;")
-    op.execute("DROP VIEW forecasts_details;")
-    op.execute("DROP VIEW forecasts_latest;")
+    op.execute(sa.text("DROP VIEW measurements_details;"))
+    op.execute(sa.text("DROP VIEW forecasts_details;"))
+    op.execute(sa.text("DROP VIEW forecasts_latest;"))

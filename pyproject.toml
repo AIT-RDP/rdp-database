@@ -1,0 +1,24 @@
+[tool.poetry]
+name = "rdp-database"
+version = "0.1.0"
+description = ""
+authors = ["Michael Spiegel <michael.spiegel@ait.ac.at>"]
+readme = "README.md"
+packages = [{include = "rdp_db"}]
+
+[tool.poetry.dependencies]
+python = ">=3.10,<4.0"
+sqlalchemy = "^2.0.27"
+alembic = "^1.13.1"
+python-dotenv = "^1.0.1"
+psycopg2-binary = "^2.9.9"
+tenacity = "^8.2.3"
+
+
+[tool.poetry.group.dev.dependencies]
+pandas = "^2.2.3"
+pytest = "^8.3.4"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

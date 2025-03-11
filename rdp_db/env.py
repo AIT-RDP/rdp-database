@@ -10,6 +10,8 @@ import dotenv
 import sqlalchemy
 import tenacity
 
+import rdp_db.utils.db_version as db_version
+
 # Populate the local environment variables
 dotenv.load_dotenv(dotenv_path=".env")
 
@@ -56,6 +58,7 @@ def run_migrations_offline():
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
+        transaction_per_migration=True  # Avoid deadlocks, by the dedicated compression policy process
     )
 
     with context.begin_transaction():
@@ -76,7 +79,7 @@ def auto_create_db():
     with engine.connect() as conn:
         logger.info(f"Ensure that the database '{db_name}' exists")
         # See: https://stackoverflow.com/questions/18389124/simulate-create-database-if-not-exists-for-postgresql
-        conn.execute(f"""
+        conn.execute(sqlalchemy.text(f"""
             DO
             $do$
             BEGIN
@@ -88,7 +91,7 @@ def auto_create_db():
                 END IF;
             END
             $do$;
-        """)
+        """))
 
 
 @tenacity.retry(wait=tenacity.wait_exponential(multiplier=1.2, min=1, max=10),
@@ -100,7 +103,7 @@ def _connect_to_db(db_url: str) -> sqlalchemy.engine.Engine:
 
     logger.debug(f"Test the DB URL {db_url}")
     with engine.connect() as conn:
-        conn.execute("SELECT FROM pg_database;")
+        conn.execute(sqlalchemy.text("SELECT FROM pg_database;"))
     logger.debug(f"Successfully connected to {db_url}")
 
     return engine
@@ -121,8 +124,10 @@ def run_migrations_online():
 
     with connectable.connect() as connection:
         context.configure(
-            connection=connection, target_metadata=target_metadata
+            connection=connection, target_metadata=target_metadata,
+            transaction_per_migration=True  # Avoid deadlocks, by the dedicated compression policy process
         )
+        db_version.init_version(connection)
 
         with context.begin_transaction():
             context.run_migrations()

@@ -9,21 +9,28 @@ import os
 
 from alembic import op
 import sqlalchemy as sa
-import e3_ems.versions.d2baa52b21c2_automatic_data_point_resolution as dp_resolution
+import rdp_db.core.rev_2022_08_04_14_46_d2baa52b21c2_automatic_data_point_resolution as dp_resolution
 
 # revision identifiers, used by Alembic.
 revision = 'b158d45bc708'
 down_revision = '3a7a5c75ae76'
-branch_labels = None
+branch_labels = "rdp_db_core"
 depends_on = None
 
 
 def upgrade():
+    op.execute(sa.text("""
+        DROP FUNCTION get_or_create_data_point_id(varchar, varchar, varchar, varchar); -- Avoid duplication        
+    """))
+    create_data_point_access_function()
+
+
+def create_data_point_access_function():
+    """Creates the actual access function without dropping any other one"""
+
     data_source_user = os.environ['POSTGRES_DATA_SOURCE_USER']
 
-    op.execute(f"""
-        DROP FUNCTION get_or_create_data_point_id(varchar, varchar, varchar, varchar); -- Avoid duplication
-        
+    op.execute(sa.text(f"""
         CREATE OR REPLACE FUNCTION get_or_create_data_point_id(
                 name VARCHAR(128),
                 device_id VARCHAR(128),
@@ -65,20 +72,20 @@ def upgrade():
             'Returns the datapoint id having the specified name, device_id, location_code, and data_provider. In 
              case non exist a data point will be created. The initial_unit and initial_metadata will only be used
              when creating the data point. No update will be performed.';
-    """)
+    """))
 
 
 def downgrade():
     data_source_user = os.environ['POSTGRES_DATA_SOURCE_USER']
 
-    op.execute("""
+    op.execute(sa.text("""
         DROP FUNCTION get_or_create_data_point_id(varchar, varchar, varchar, varchar, text, jsonb);
-    """)
+    """))
 
     dp_resolution.upgrade()
-    op.execute(f"""
+    op.execute(sa.text(f"""
         GRANT EXECUTE ON FUNCTION public.get_or_create_data_point_id(varchar, varchar, varchar, varchar) 
             TO data_source_base;
         GRANT EXECUTE ON FUNCTION public.get_or_create_data_point_id(varchar, varchar, varchar, varchar) 
             TO {data_source_user};
-    """)
+    """))

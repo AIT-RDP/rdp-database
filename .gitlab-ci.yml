@@ -4,104 +4,113 @@ stages:
   - release
   - cleanup
 
+include:
+  - component: "$CI_SERVER_FQDN/ees/rdp/generic-components/rdp-cicd-components/kaniko@main"
+    inputs:
+      stage-test-image: release
+
+
 variables:
   CONTAINER_TEST_IMAGE: $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA
 
 # =============================================================================
-# Create, test and push the docker images
-#
-# WARNING: These jobs execute on a shell runner. Take care not to crash the
-#          system.
+# Execute the unit tests
 # =============================================================================
 
-# Creates the docker image for productive use
-build-images:
-  stage: build
-  tags:
-    - baremetal
-    - shell
-  script:
-    - docker info
-    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
-    - docker build --pull --file docker/Dockerfile -t $CONTAINER_TEST_IMAGE .
-    - docker push $CONTAINER_TEST_IMAGE
+test-unit-pg14:
+  extends: .test-unit
+  variables:
+    TS_VERSION: "2.18.0-pg14"
+    RDP_EXPECTED_POSTGRES_VERSION: "14\\..*"
 
-# Template that pushes a release image to $CONTAINER_RELEASE_IMAGE
-.release-image:
+test-unit-pg16:
+  extends: .test-unit
+  variables:
+    TS_VERSION: "2.18.0-pg16"
+    RDP_EXPECTED_POSTGRES_VERSION: "16\\..*"
+
+test-unit-pg17:
+  extends: .test-unit
+  variables:
+    TS_VERSION: "2.18.0-pg17"
+    RDP_EXPECTED_POSTGRES_VERSION: "17\\..*"
+
+.test-unit:
+  stage: test
+  variables:
+    TS_VERSION: "2.18.0-pg14"
+    PYTHON_VERSION: "3.11"
+    RDP_POSTGRES_HOST: "postgres"
+    POSTGRES_DB: "rdp_db"
+    POSTGRES_PASSWORD: "${POSTGRES_PASSWORD}"
+    POSTGRES_USER: "${POSTGRES_USER}"
+    RDP_POSTGRES_URL: "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres/rdp_db"
+    RDP_POSTGRES_URL_INIT: "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres"
+  services:
+    - name: ${CI_DEPENDENCY_PROXY_DIRECT_GROUP_IMAGE_PREFIX}/timescale/timescaledb:${TS_VERSION}
+      alias: postgres
+  tags:
+    - ito
+#    - docker
+#    - x86_64
+  image: ${CI_DEPENDENCY_PROXY_DIRECT_GROUP_IMAGE_PREFIX}/python:${PYTHON_VERSION}
+  script:
+    - pip install -r requirements-dev.txt
+    - poetry install --all-extras --with dev
+    - PYTHONPATH="${PYTHONPATH}:.:tests" poetry run pytest --junitxml=report.xml --log-cli-level=DEBUG tests
+  artifacts: # Collect test results
+    when: always
+    paths:
+      - report.xml
+    reports:
+      junit: report.xml
+
+
+# =============================================================================
+# Build the installable package
+# =============================================================================
+
+.build-package:
   stage: release
   tags:
-    - baremetal
-    - shell
+    - ito
+#    - docker
+#    - x86_64
+  image: ${CI_DEPENDENCY_PROXY_GROUP_IMAGE_PREFIX}/python:3.10
   variables:
-    CONTAINER_REGISTRY_USER: $CI_REGISTRY_USER
-    CONTAINER_REGISTRY_PASSWORD: $CI_REGISTRY_PASSWORD
-    CONTAINER_REGISTRY: $CI_REGISTRY
+    VERSION_FORMAT: "{base}.post{distance}.dev+{commit}"
   script:
-    - docker info
-    # Log in to the default registry holding the test image
-    - echo "Try to login to the source registry  $CI_REGISTRY given the user $CI_REGISTRY_USER"
-    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
-    # Log in to the external registry to push the release
-    - echo "Try to login to the destination registry  $CONTAINER_REGISTRY given the user $CONTAINER_REGISTRY_USER"
-    - docker login -u $CONTAINER_REGISTRY_USER -p $CONTAINER_REGISTRY_PASSWORD $CONTAINER_REGISTRY
-    # Fetch the test image and publish it to the final registry
-    - docker pull $CONTAINER_TEST_IMAGE
-    - docker tag $CONTAINER_TEST_IMAGE $CONTAINER_RELEASE_IMAGE
-    - docker push $CONTAINER_RELEASE_IMAGE
+    - pip install -r requirements-dev.txt
+    # Guess the version number (no versioneer needed)
+    - DST_VERSION=$(dunamai from git --format "${VERSION_FORMAT}")
+    - echo Write destination version $DST_VERSION
+    - poetry version "$DST_VERSION"
+    # Build the project
+    - poetry build
+    # Push the package
+    - poetry config repositories.gitlab-intern ${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/pypi
+    - poetry config http-basic.gitlab-intern gitlab-ci-token ${CI_JOB_TOKEN}
+    - poetry publish --repository gitlab-intern
 
-# Release the latest-tag
-release-image-main:
-  extends: .release-image
+build-package-main:
+  extends: .build-package
   variables:
-    CONTAINER_RELEASE_IMAGE: $EXT_REGISTRY/$CI_PROJECT_NAME:latest
-    CONTAINER_REGISTRY_USER: $EXT_REGISTRY_USER
-    CONTAINER_REGISTRY_PASSWORD: $EXT_REGISTRY_PASSWORD
-    CONTAINER_REGISTRY: $EXT_REGISTRY
-  tags:
-    - baremetal
-    - shell
+    VERSION_FORMAT: "{base}.post{distance}+{commit}"
   only:
     - main
     - master
 
-# release the latest-dev tag
-release-image-tag:
-  extends: .release-image
+build-package-release:
+  extends: .build-package
   variables:
-    CONTAINER_RELEASE_IMAGE: $EXT_REGISTRY/$CI_PROJECT_NAME:$CI_COMMIT_TAG
-    CONTAINER_REGISTRY_USER: $EXT_REGISTRY_USER
-    CONTAINER_REGISTRY_PASSWORD: $EXT_REGISTRY_PASSWORD
-    CONTAINER_REGISTRY: $EXT_REGISTRY
-  tags:
-    - baremetal
-    - shell
-  rules:
-    - if: $CI_COMMIT_TAG
+    VERSION_FORMAT: "{base}"
+  only:
+    - tags
 
-# release the latest-dev tag
-release-image-dev:
-  extends: .release-image
+build-package-development:
+  extends: .build-package
   variables:
-    CONTAINER_RELEASE_IMAGE: $EXT_REGISTRY/$CI_PROJECT_NAME:latest-dev
-    CONTAINER_REGISTRY_USER: $EXT_REGISTRY_USER
-    CONTAINER_REGISTRY_PASSWORD: $EXT_REGISTRY_PASSWORD
-    CONTAINER_REGISTRY: $EXT_REGISTRY
-  tags:
-    - baremetal
-    - shell
+    VERSION_FORMAT: "{base}.post{distance}.dev+{commit}"
   only:
     - development
-
-# Removes any local docker image to avoid littering the build host
-cleanup-images:
-  stage: cleanup
-  tags:
-    - baremetal
-    - shell
-  script:
-    - docker info
-    # all images are tagged by the local registry, anyway. Hence, there is no need to explicitly search for remote ones
-    - docker images --filter=reference="${CI_REGISTRY_IMAGE}"
-    - docker rmi -f $(docker images --filter=reference="${CI_REGISTRY_IMAGE}" -q)
-    - docker images
-  when: always
+    - 4-create-an-installable-python-package
